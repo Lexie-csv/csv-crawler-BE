@@ -22,6 +22,7 @@
     },
     "devDependencies": {
         "@types/node": "^20.10.5",
+        "@types/node-fetch": "^2.6.13",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
         "@typescript-eslint/parser": "^7.0.0",
         "commitlint": "^18.4.3",
@@ -34,6 +35,7 @@
         "typescript": "^5.3.3"
     },
     "dependencies": {
-        "next": "^16.0.1"
+        "next": "^16.0.1",
+        "node-fetch": "^2.7.0"
     }
 }
