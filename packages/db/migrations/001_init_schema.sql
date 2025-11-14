@@ -5,7 +5,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Sources table
-CREATE TABLE sources (
+CREATE TABLE IF NOT EXISTS sources (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   url VARCHAR(2048) NOT NULL UNIQUE,
@@ -20,7 +20,7 @@ CREATE TABLE sources (
 );
 
 -- Documents table
-CREATE TABLE documents (
+CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   source_id UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   title VARCHAR(512) NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE documents (
 );
 
 -- Datapoints table
-CREATE TABLE datapoints (
+CREATE TABLE IF NOT EXISTS datapoints (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   key VARCHAR(255) NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE datapoints (
 );
 
 -- Digests (weekly newsletters) table
-CREATE TABLE digests (
+CREATE TABLE IF NOT EXISTS digests (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   title VARCHAR(512) NOT NULL,
   topics TEXT[], -- array of topic strings
@@ -72,7 +72,7 @@ CREATE TABLE digests (
 );
 
 -- Subscriptions table
-CREATE TABLE subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(255) NOT NULL UNIQUE,
   topics TEXT[], -- array of topic interests
@@ -85,7 +85,7 @@ CREATE TABLE subscriptions (
 );
 
 -- Audit log table
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   action VARCHAR(50) NOT NULL,
   entity_type VARCHAR(50),
@@ -96,14 +96,14 @@ CREATE TABLE audit_logs (
 );
 
 -- Indices for performance
-CREATE INDEX idx_documents_source_id ON documents(source_id);
-CREATE INDEX idx_documents_classification ON documents(classification);
-CREATE INDEX idx_documents_country ON documents(country);
-CREATE INDEX idx_documents_sector ON documents(sector);
-CREATE INDEX idx_documents_crawled_at ON documents(crawled_at DESC);
-CREATE INDEX idx_documents_content_hash ON documents(content_hash);
-CREATE INDEX idx_datapoints_document_id ON datapoints(document_id);
-CREATE INDEX idx_datapoints_key ON datapoints(key);
-CREATE INDEX idx_digests_scheduled_at ON digests(scheduled_at);
-CREATE INDEX idx_subscriptions_active ON subscriptions(active);
-CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_source_id ON documents(source_id);
+CREATE INDEX IF NOT EXISTS idx_documents_classification ON documents(classification);
+CREATE INDEX IF NOT EXISTS idx_documents_country ON documents(country);
+CREATE INDEX IF NOT EXISTS idx_documents_sector ON documents(sector);
+CREATE INDEX IF NOT EXISTS idx_documents_crawled_at ON documents(crawled_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(content_hash);
+CREATE INDEX IF NOT EXISTS idx_datapoints_document_id ON datapoints(document_id);
+CREATE INDEX IF NOT EXISTS idx_datapoints_key ON datapoints(key);
+CREATE INDEX IF NOT EXISTS idx_digests_scheduled_at ON digests(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON subscriptions(active);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
