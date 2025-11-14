@@ -2,6 +2,8 @@ import express, { type Express, type Request, type Response } from 'express';
 import { setupGracefulShutdown, healthCheck } from '@csv/db';
 import sourcesRouter from './routes/sources';
 import crawlRouter from './routes/crawl';
+import digestRouter from './routes/digest';
+import { initializeDigestScheduler } from './jobs/weekly-digest';
 
 const app: Express = express();
 const port = process.env.PORT ?? 3001;
@@ -25,6 +27,10 @@ app.get('/health', async (_req: Request, res: Response): Promise<void> => {
 // Mount routes
 app.use('/api/v1/sources', sourcesRouter);
 app.use('/api/v1/crawl', crawlRouter);
+app.use('/api/digest', digestRouter);
+
+// Initialize scheduled jobs
+initializeDigestScheduler();
 
 // 404 handler
 app.use((_req: Request, res: Response): void => {
