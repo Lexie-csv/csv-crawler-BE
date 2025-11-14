@@ -6,7 +6,6 @@
             "ES2020"
         ],
         "outDir": "./dist",
-        "rootDir": "./src",
         "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
@@ -21,6 +20,9 @@
         "paths": {
             "@csv/types": [
                 "../../packages/types/src"
+            ],
+            "@csv/db": [
+                "../../packages/db/src"
             ]
         }
     },

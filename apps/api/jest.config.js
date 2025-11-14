@@ -4,6 +4,10 @@ export default {
     roots: ['<rootDir>/src'],
     testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
+    moduleNameMapper: {
+        '^@csv/db$': '<rootDir>/../../packages/db/src',
+        '^@csv/types$': '<rootDir>/../../packages/types/src',
+    },
     collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts', '!src/**/*.d.ts'],
     coverageThreshold: {
         global: {
