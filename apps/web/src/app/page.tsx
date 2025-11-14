@@ -6,21 +6,24 @@ export default function Page(): JSX.Element {
             {/* Navigation */}
             <nav className="border-b border-border sticky top-0 z-50 bg-white">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
+                    <Link href="/" className="flex items-center gap-2">
                         <div className="text-2xl font-bold text-copy">CSV</div>
                         <span className="text-xs text-secondary font-medium">Policy & Data Crawler</span>
-                    </div>
+                    </Link>
                     <div className="flex gap-6">
-                        <a href="/crawl" className="text-sm text-secondary hover:text-copy transition">
-                            Crawl Dashboard
-                        </a>
-                        <a href="#sources" className="text-sm text-secondary hover:text-copy transition">
+                        <Link href="/sources" className="text-sm text-secondary hover:text-copy transition">
                             Sources
-                        </a>
-                        <a href="#extraction" className="text-sm text-secondary hover:text-copy transition">
-                            Extraction
-                        </a>
-                        <a href="http://localhost:3001" target="_blank" rel="noopener noreferrer" className="text-sm text-secondary hover:text-copy transition">
+                        </Link>
+                        <Link href="/crawl" className="text-sm text-secondary hover:text-copy transition">
+                            Crawl Jobs
+                        </Link>
+                        <Link href="/documents" className="text-sm text-secondary hover:text-copy transition">
+                            Documents
+                        </Link>
+                        <Link href="/datapoints" className="text-sm text-secondary hover:text-copy transition">
+                            Datapoints
+                        </Link>
+                        <a href="http://localhost:3001/health" target="_blank" rel="noopener noreferrer" className="text-sm text-secondary hover:text-copy transition">
                             API
                         </a>
                     </div>
@@ -37,9 +40,9 @@ export default function Page(): JSX.Element {
                         Extract structured datapoints from policy documents, regulatory filings, and official sources. Build reliable inputs for financial models and research.
                     </p>
                     <div className="flex gap-4">
-                        <button className="px-6 py-3 bg-copy text-white rounded-md font-medium text-sm hover:bg-opacity-90 transition">
+                        <Link href="/sources" className="px-6 py-3 bg-copy text-white rounded-md font-medium text-sm hover:bg-opacity-90 transition">
                             Get Started
-                        </button>
+                        </Link>
                         <a href="http://localhost:3001/health" target="_blank" rel="noopener noreferrer" className="px-6 py-3 border border-border text-copy rounded-md font-medium text-sm hover:bg-bg-contrast transition">
                             API Status
                         </a>
