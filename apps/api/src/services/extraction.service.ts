@@ -1,259 +1,381 @@
-import { createHash } from 'crypto';
-import * as db from '@csv/db';
-import { CrawledDocument, DataPoint } from '@csv/types';
+import { query, queryOne } from '@csv/db';
+import { parse } from 'csv-parse/sync';
+import * as cheerio from 'cheerio';
 
-/**
- * Extraction service: Processes crawled documents and extracts structured datapoints.
- *
- * Workflow:
- * 1. Query unprocessed documents (where processed_at is null)
- * 2. Call extractor function (mockable for testing) to extract key-value pairs
- * 3. Validate extracted data (type checking, confidence scoring)
- * 4. Store datapoints in the datapoints table
- * 5. Mark document as processed
- */
+interface Document {
+    id: string;
+    source_id: string;
+    title: string;
+    url: string;
+    content: string | null;
+}
 
-export interface ExtractedDataPoint {
+interface Datapoint {
+    source_id: string;
+    document_id: string;
+    category: string | null;
+    subcategory: string | null;
     key: string;
-    value: string | number;
-    unit?: string;
-    effectiveDate?: Date;
-    confidence?: number;
-    source?: string;
+    value: string;
+    unit: string | null;
+    effective_date: Date | null;
+    source_reference: string | null;
+    confidence: number;
+    metadata: Record<string, unknown> | null;
 }
 
 export interface ExtractionResult {
-    datapoints: ExtractedDataPoint[];
-    classification?: string;
-    country?: string;
-    sector?: string;
-    themes?: string[];
-    confidence?: number;
-    verified?: boolean;
+    datapoints: number;
+    errors: string[];
 }
 
-/**
- * Default mockable extractor: Placeholder that returns empty results.
- * In production, replace with a real LLM client.
- */
-async function defaultExtractor(content: string): Promise<ExtractionResult> {
-    // Placeholder: In production, call an LLM API to extract structured data
-    // For now, return a simple extraction heuristic (e.g., parse dates, percentages)
-    const datapoints: ExtractedDataPoint[] = [];
+export async function extractDatapoints(documentId: string): Promise<ExtractionResult> {
+    const doc = await queryOne<Document>(
+        'SELECT * FROM documents WHERE id = $1',
+        [documentId]
+    );
 
-    // Simple heuristic: Look for patterns like "Q1 2025: 15%", "Date: 2025-01-15", etc.
-    const datePattern = /(\d{4}-\d{2}-\d{2}|\w+\s+\d{1,2},?\s+\d{4})/gi;
-    const percentPattern = /(\d+(?:\.\d+)?)\s*%/g;
-
-    let dateMatch;
-    while ((dateMatch = datePattern.exec(content)) !== null) {
-        datapoints.push({
-            key: 'announcement_date',
-            value: dateMatch[0],
-            confidence: 0.5,
-        });
+    if (!doc || !doc.content) {
+        return { datapoints: 0, errors: ['No content to extract from'] };
     }
 
-    let percentMatch;
-    while ((percentMatch = percentPattern.exec(content)) !== null) {
-        datapoints.push({
-            key: 'percentage_metric',
-            value: percentMatch[1],
-            unit: '%',
-            confidence: 0.4,
-        });
+    const errors: string[] = [];
+    let totalDatapoints = 0;
+
+    try {
+        const csvDatapoints = await extractFromCSV(doc);
+        totalDatapoints += csvDatapoints;
+
+        if (csvDatapoints === 0) {
+            const tableDatapoints = await extractFromTables(doc);
+            totalDatapoints += tableDatapoints;
+        }
+
+        if (totalDatapoints === 0) {
+            const patternDatapoints = await extractFromPatterns(doc);
+            totalDatapoints += patternDatapoints;
+        }
+
+        await query(
+            'UPDATE documents SET extracted_data = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify({ extracted: true, datapoints: totalDatapoints }), documentId]
+        );
+
+        console.log(`[Extraction] Extracted ${totalDatapoints} datapoints from document ${documentId}`);
+        return { datapoints: totalDatapoints, errors };
+    } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        errors.push(errorMsg);
+        console.error(`[Extraction] Failed:`, errorMsg);
+        return { datapoints: totalDatapoints, errors };
     }
+}
+
+async function extractFromCSV(doc: Document): Promise<number> {
+    if (!doc.content) return 0;
+    
+    const content = doc.content.trim();
+    const firstLine = content.split('\n')[0];
+    
+    if (!firstLine.includes(',') && !firstLine.includes('\t')) {
+        return 0;
+    }
+
+    try {
+        const records = parse(content, {
+            columns: true,
+            skip_empty_lines: true,
+            trim: true,
+            delimiter: [',', '\t'],
+            relax_quotes: true,
+            relax_column_count: true,
+        }) as Record<string, string>[];
+
+        if (records.length === 0) return 0;
+
+        let count = 0;
+        for (const record of records) {
+            const datapoint = parseRecordToDatapoint(doc, record);
+            if (datapoint) {
+                await insertDatapoint(datapoint);
+                count++;
+            }
+        }
+        return count;
+    } catch (error) {
+        console.error(`[Extraction] CSV parse error:`, error);
+        return 0;
+    }
+}
+
+async function extractFromTables(doc: Document): Promise<number> {
+    if (!doc.content) return 0;
+
+    const $ = cheerio.load(doc.content);
+    const tables = $('table');
+
+    if (tables.length === 0) return 0;
+
+    let count = 0;
+
+    for (let i = 0; i < tables.length; i++) {
+        const table = tables[i];
+        const rows = $(table).find('tr');
+        const headers: string[] = [];
+
+        $(rows[0]).find('th, td').each((_, cell) => {
+            headers.push($(cell).text().trim());
+        });
+
+        if (headers.length === 0) continue;
+
+        for (let j = 1; j < rows.length; j++) {
+            const row = rows[j];
+            const cells: string[] = [];
+            
+            $(row).find('td').each((_, cell) => {
+                cells.push($(cell).text().trim());
+            });
+
+            if (cells.length === 0) continue;
+
+            const record: Record<string, string> = {};
+            headers.forEach((header, index) => {
+                if (cells[index]) {
+                    record[header] = cells[index];
+                }
+            });
+
+            const datapoint = parseRecordToDatapoint(doc, record);
+            if (datapoint) {
+                await insertDatapoint(datapoint);
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+async function extractFromPatterns(doc: Document): Promise<number> {
+    if (!doc.content) return 0;
+
+    const patterns = [
+        { regex: /([A-Z]{3})\/([A-Z]{3}):\s*([\d.,]+)/gi, type: 'exchange_rate' },
+        { regex: /([\d.]+)%\s+effective\s+(\w+\s+\d{1,2},?\s+\d{4})/gi, type: 'interest_rate' },
+        { regex: /Circular No\.\s*(\d+)\s+dated\s+(\w+\s+\d{1,2},?\s+\d{4})/gi, type: 'policy' },
+        { regex: /HS Code\s+([\d.]+):\s*([\d.]+)%/gi, type: 'tariff' },
+    ];
+
+    let count = 0;
+    const content = doc.content;
+
+    for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.regex.exec(content)) !== null) {
+            const datapoint = parsePatternMatch(doc, pattern.type, match);
+            if (datapoint) {
+                await insertDatapoint(datapoint);
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+function parseRecordToDatapoint(doc: Document, record: Record<string, string>): Omit<Datapoint, 'created_at' | 'updated_at'> | null {
+    const category = inferCategory(record);
+    if (!category) return null;
+
+    const valueKey = Object.keys(record).find(
+        (key) => /value|amount|rate|price|level|quantity/i.test(key) && record[key]
+    );
+
+    if (!valueKey || !record[valueKey]) return null;
+
+    const dateKey = Object.keys(record).find((key) =>
+        /date|effective|period|from|to/i.test(key)
+    );
+
+    const effectiveDate = dateKey ? parseDate(record[dateKey]) : null;
+    const unitKey = Object.keys(record).find((key) => /unit|currency|denomination/i.test(key));
 
     return {
-        datapoints,
-        classification: 'unclassified',
-        confidence: 0.3,
-        verified: false,
+        source_id: doc.source_id,
+        document_id: doc.id,
+        category,
+        subcategory: inferSubcategory(record),
+        key: valueKey,
+        value: record[valueKey],
+        unit: unitKey ? record[unitKey] : null,
+        effective_date: effectiveDate,
+        source_reference: doc.url,
+        confidence: 0.8,
+        metadata: record,
     };
 }
 
-/**
- * Query unprocessed documents
- */
-async function getUnprocessedDocuments(
-    limit: number = 10
-): Promise<CrawledDocument[]> {
-    const rows = await db.query<CrawledDocument>(
-        `SELECT id, source_id, url, content, content_hash, classification, 
-            country, sector, themes, extracted_data, confidence, verified, 
-            published_at, crawled_at, created_at, updated_at
-     FROM documents 
-     WHERE processed_at IS NULL 
-     ORDER BY created_at ASC 
-     LIMIT $1`,
-        [limit]
+function parsePatternMatch(doc: Document, patternType: string, match: RegExpExecArray): Omit<Datapoint, 'created_at' | 'updated_at'> | null {
+    if (patternType === 'exchange_rate') {
+        return {
+            source_id: doc.source_id,
+            document_id: doc.id,
+            category: 'exchange_rate',
+            subcategory: `${match[1]}/${match[2]}`,
+            key: `${match[1]}_${match[2]}_rate`,
+            value: match[3],
+            unit: match[2],
+            effective_date: null,
+            source_reference: doc.url,
+            confidence: 0.7,
+            metadata: { pattern: 'exchange_rate', from: match[1], to: match[2] },
+        };
+    }
+
+    if (patternType === 'interest_rate') {
+        return {
+            source_id: doc.source_id,
+            document_id: doc.id,
+            category: 'interest_rate',
+            subcategory: null,
+            key: 'policy_rate',
+            value: match[1],
+            unit: 'percent',
+            effective_date: parseDate(match[2]),
+            source_reference: doc.url,
+            confidence: 0.7,
+            metadata: { pattern: 'interest_rate' },
+        };
+    }
+
+    if (patternType === 'policy') {
+        return {
+            source_id: doc.source_id,
+            document_id: doc.id,
+            category: 'policy',
+            subcategory: 'circular',
+            key: 'circular_number',
+            value: match[1],
+            unit: null,
+            effective_date: parseDate(match[2]),
+            source_reference: doc.url,
+            confidence: 0.9,
+            metadata: { pattern: 'policy_circular', circular_number: match[1] },
+        };
+    }
+
+    if (patternType === 'tariff') {
+        return {
+            source_id: doc.source_id,
+            document_id: doc.id,
+            category: 'tariff',
+            subcategory: `HS_${match[1]}`,
+            key: 'import_duty',
+            value: match[2],
+            unit: 'percent',
+            effective_date: null,
+            source_reference: doc.url,
+            confidence: 0.8,
+            metadata: { pattern: 'tariff', hs_code: match[1] },
+        };
+    }
+
+    return null;
+}
+
+async function insertDatapoint(datapoint: Omit<Datapoint, 'created_at' | 'updated_at'>): Promise<void> {
+    const existing = await queryOne<{ id: string }>(
+        `SELECT id FROM datapoints 
+         WHERE source_id = $1 
+         AND category = $2 
+         AND key = $3
+         AND value = $4 
+         AND (effective_date = $5 OR (effective_date IS NULL AND $5 IS NULL))`,
+        [datapoint.source_id, datapoint.category, datapoint.key, datapoint.value, datapoint.effective_date]
     );
-    return rows;
-}
 
-/**
- * Insert datapoints for a document
- */
-async function insertDataPoints(
-    documentId: string,
-    datapoints: ExtractedDataPoint[]
-): Promise<DataPoint[]> {
-    if (datapoints.length === 0) return [];
+    if (existing) return;
 
-    const placeholders = datapoints
-        .map(
-            (_, i) =>
-                `($${i * 7 + 1}, $${i * 7 + 2}, $${i * 7 + 3}, $${i * 7 + 4}, $${i * 7 + 5}, $${i * 7 + 6}, $${i * 7 + 7})`
-        )
-        .join(',');
-
-    const params: unknown[] = [];
-    datapoints.forEach((dp) => {
-        params.push(
-            documentId,
-            dp.key,
-            String(dp.value),
-            dp.unit ?? null,
-            dp.effectiveDate ?? null,
-            dp.source ?? null,
-            dp.confidence ?? 0
-        );
-    });
-
-    const sql = `
-    INSERT INTO datapoints (document_id, key, value, unit, effective_date, source, confidence, created_at)
-    VALUES ${placeholders}
-    RETURNING id, document_id, key, value, unit, effective_date, source, confidence, created_at, updated_at
-  `;
-
-    const rows = await db.query<DataPoint>(sql, params);
-    return rows;
-}
-
-/**
- * Mark document as processed
- */
-async function markDocumentProcessed(documentId: string): Promise<void> {
-    await db.query(
-        `UPDATE documents 
-     SET processed_at = NOW(), updated_at = NOW() 
-     WHERE id = $1`,
-        [documentId]
+    await query(
+        `INSERT INTO datapoints (
+          source_id, document_id, category, subcategory, key, value, unit, 
+          effective_date, source_reference, confidence, metadata, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
+        [
+            datapoint.source_id,
+            datapoint.document_id,
+            datapoint.category,
+            datapoint.subcategory,
+            datapoint.key,
+            datapoint.value,
+            datapoint.unit,
+            datapoint.effective_date,
+            datapoint.source_reference,
+            datapoint.confidence,
+            JSON.stringify(datapoint.metadata),
+        ]
     );
 }
 
-/**
- * Update document with extraction metadata
- */
-async function updateDocumentMetadata(
-    documentId: string,
-    metadata: Partial<ExtractionResult>
-): Promise<void> {
-    const { classification, country, sector, themes, confidence, verified } =
-        metadata;
+function inferCategory(record: Record<string, string>): string | null {
+    const keys = Object.keys(record).map((k) => k.toLowerCase()).join(' ');
 
-    await db.query(
-        `UPDATE documents 
-     SET classification = COALESCE($1, classification),
-         country = COALESCE($2, country),
-         sector = COALESCE($3, sector),
-         themes = COALESCE($4, themes),
-         confidence = COALESCE($5, confidence),
-         verified = COALESCE($6, verified),
-         updated_at = NOW()
-     WHERE id = $7`,
-        [classification, country, sector, themes, confidence, verified, documentId]
-    );
+    if (keys.includes('exchange') || keys.includes('forex') || keys.includes('currency'))
+        return 'exchange_rate';
+    if (keys.includes('interest') || keys.includes('rate') || keys.includes('policy rate'))
+        return 'interest_rate';
+    if (keys.includes('tariff') || keys.includes('duty') || keys.includes('hs code'))
+        return 'tariff';
+    if (keys.includes('policy') || keys.includes('regulation') || keys.includes('circular'))
+        return 'policy';
+    if (keys.includes('price') || keys.includes('commodity')) return 'commodity_price';
+    if (keys.includes('stock') || keys.includes('share') || keys.includes('equity'))
+        return 'market_data';
+
+    return 'other';
 }
 
-/**
- * Process a single document: extract, validate, and store datapoints
- */
-export async function processDocument(
-    doc: CrawledDocument,
-    extractor: (content: string) => Promise<ExtractionResult> = defaultExtractor
-): Promise<{ success: boolean; datapointsCount: number; error?: string }> {
+function inferSubcategory(record: Record<string, string>): string | null {
+    const subcatKey = Object.keys(record).find((key) =>
+        /type|category|subcategory|name|instrument/i.test(key)
+    );
+    return subcatKey ? record[subcatKey] : null;
+}
+
+function parseDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+
     try {
-        if (!doc.content) {
-            throw new Error('Document has no content');
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+            return null;
         }
-
-        // Extract datapoints
-        const result = await extractor(doc.content);
-
-        // Validate and filter
-        const validDatapoints = (result.datapoints || []).filter((dp) => {
-            // Basic validation: key and value must exist
-            return dp.key && dp.value;
-        });
-
-        // Store datapoints
-        const stored = await insertDataPoints(doc.id, validDatapoints);
-
-        // Update document metadata
-        await updateDocumentMetadata(doc.id, result);
-
-        // Mark as processed
-        await markDocumentProcessed(doc.id);
-
-        console.log(
-            `[EXTRACTION] Processed doc=${doc.id}, datapoints=${stored.length}`
-        );
-
-        return { success: true, datapointsCount: stored.length };
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[EXTRACTION] Error processing doc=${doc.id}: ${message}`);
-        return { success: false, datapointsCount: 0, error: message };
+        return date;
+    } catch {
+        return null;
     }
 }
 
-/**
- * Main extraction loop: Poll for unprocessed documents and extract datapoints
- */
-export async function runExtractionLoop(
-    stopSignal?: { stop: boolean },
-    extractor: (content: string) => Promise<ExtractionResult> = defaultExtractor
-): Promise<void> {
-    const POLL_INTERVAL_MS = Number(process.env.EXTRACTION_POLL_MS || 5000);
-    const BATCH_SIZE = Number(process.env.EXTRACTION_BATCH || 5);
-
-    console.log(
-        `[EXTRACTION] Starting loop. Poll interval: ${POLL_INTERVAL_MS}ms, batch size: ${BATCH_SIZE}`
+export async function extractAllForSource(sourceId: string): Promise<ExtractionResult> {
+    const documents = await query<Document>(
+        `SELECT * FROM documents 
+         WHERE source_id = $1 
+         AND (extracted_data IS NULL OR extracted_data->>'extracted' != 'true')`,
+        [sourceId]
     );
 
-    while (!stopSignal?.stop) {
-        try {
-            const docs = await getUnprocessedDocuments(BATCH_SIZE);
+    let totalDatapoints = 0;
+    const allErrors: string[] = [];
 
-            if (docs.length === 0) {
-                // No documents to process, just wait
-                await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-                continue;
-            }
-
-            // Process each document sequentially
-            for (const doc of docs) {
-                // eslint-disable-next-line no-await-in-loop
-                await processDocument(doc, extractor);
-            }
-        } catch (err) {
-            console.error('[EXTRACTION] Poll error:', err);
-        }
-
-        // Wait before next poll
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    for (const doc of documents) {
+        const result = await extractDatapoints(doc.id);
+        totalDatapoints += result.datapoints;
+        allErrors.push(...result.errors);
     }
-}
 
-if (require.main === module) {
-    // CLI runner
-    console.log('[EXTRACTION] Starting extraction worker...');
-    runExtractionLoop().catch((err) => {
-        console.error('[EXTRACTION] Fatal error:', err);
-        process.exit(1);
-    });
+    return {
+        datapoints: totalDatapoints,
+        errors: allErrors,
+    };
 }
-
-export default { runExtractionLoop, processDocument };

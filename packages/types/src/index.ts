@@ -13,6 +13,7 @@ export interface Source {
     readonly sector?: string | null;
     readonly frequency?: 'daily' | 'weekly' | 'monthly' | 'ad-hoc';
     readonly active: boolean;
+    readonly crawlConfig?: SourceCrawlConfig | null;
     readonly createdAt: Date;
     readonly updatedAt: Date;
 }
@@ -29,6 +30,14 @@ export interface CrawlJob {
     readonly itemsCrawled: number;
     readonly itemsNew: number;
     readonly errorMessage?: string | null;
+    // Multi-page crawling fields
+    readonly pagesCrawled?: number;
+    readonly pagesNew?: number;
+    readonly pagesFailed?: number;
+    readonly pagesSkipped?: number;
+    readonly maxDepth?: number;
+    readonly maxPages?: number;
+    readonly crawlConfig?: SourceCrawlConfig | null;
     readonly createdAt: Date;
 }
 
@@ -148,4 +157,105 @@ export interface ApiListResponse<T> {
     readonly total: number;
     readonly limit: number;
     readonly offset: number;
+}
+
+// ============================================
+// Multi-Page Crawling & LLM Digest Types
+// ============================================
+
+/**
+ * SourceCrawlConfig: Configuration for multi-page crawling per source
+ */
+export interface SourceCrawlConfig {
+    readonly baseUrl: string;
+    readonly maxDepth?: number;         // max link depth from base URL (default: 2)
+    readonly maxPages?: number;         // total pages to crawl per job (default: 50)
+    readonly concurrency?: number;      // simultaneous HTTP requests (default: 3)
+    readonly allowedPathPatterns?: string[]; // regex patterns for allowed paths
+    readonly blockedPathPatterns?: string[]; // regex patterns for blocked paths
+    readonly paginationSelectors?: string[]; // CSS selectors for pagination links
+    readonly followExternalLinks?: boolean;  // whether to follow external domains
+}
+
+/**
+ * DigestHighlight: A significant event or document found during crawl
+ */
+export interface DigestHighlight {
+    readonly title: string;
+    readonly summary: string;
+    readonly category: 'circular' | 'ppa' | 'price_change' | 'energy_mix' | 'policy' | 'other';
+    readonly documentId: string | null;
+    readonly sourceUrl: string;
+    readonly effectiveDate?: string | null;
+    readonly confidence?: number;
+}
+
+/**
+ * DigestDatapoint: Structured datapoint extracted by LLM
+ */
+export interface DigestDatapoint {
+    readonly indicatorCode: string;      // "DOE_CIRCULAR", "PPA_SIGNED", "WESM_AVG_PRICE", etc.
+    readonly description: string;
+    readonly value: number | string;
+    readonly unit?: string | null;
+    readonly effectiveDate?: string | null;
+    readonly country?: string | null;
+    readonly metadata?: Record<string, any>;
+    readonly sourceDocumentId: string;
+    readonly sourceUrl: string;
+    readonly confidence?: number;
+}
+
+/**
+ * CrawlDigest: LLM-generated summary of a crawl job
+ */
+export interface CrawlDigest {
+    readonly id: string;
+    readonly crawlJobId: string;
+    readonly sourceId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+    readonly summaryMarkdown?: string | null;
+    readonly summaryMarkdownPath?: string | null;
+    readonly highlights: DigestHighlight[];
+    readonly datapoints: DigestDatapoint[];
+    readonly metadata?: Record<string, any>;
+    readonly createdAt: string;
+    readonly updatedAt?: string;
+}
+
+/**
+ * LLM Classification Result
+ */
+export interface DocumentClassification {
+    readonly isRelevant: boolean;
+    readonly category: 'circular' | 'ppa' | 'price_change' | 'energy_mix' | 'policy' | 'other' | 'irrelevant';
+    readonly confidence: number;
+    readonly reasoning?: string;
+}
+
+/**
+ * LLM Extraction Result
+ */
+export interface ExtractionResult {
+    readonly events: Array<{
+        title: string;
+        summary: string;
+        category: string;
+        effectiveDate?: string | null;
+    }>;
+    readonly datapoints: DigestDatapoint[];
+    readonly confidence: number;
+}
+
+/**
+ * Paginated response with page info
+ */
+export interface PaginatedResponse<T> {
+    readonly items: T[];
+    readonly page: number;
+    readonly pageSize: number;
+    readonly totalItems: number;
+    readonly totalPages: number;
+    readonly hasMore: boolean;
 }

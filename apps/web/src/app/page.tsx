@@ -17,6 +17,9 @@ export default function Page(): JSX.Element {
                         <Link href="/crawl" className="text-sm text-secondary hover:text-copy transition">
                             Crawl Jobs
                         </Link>
+                        <Link href="/digests" className="text-sm text-secondary hover:text-copy transition">
+                            Digests
+                        </Link>
                         <Link href="/documents" className="text-sm text-secondary hover:text-copy transition">
                             Documents
                         </Link>

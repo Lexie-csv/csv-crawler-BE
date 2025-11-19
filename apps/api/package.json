@@ -19,14 +19,26 @@
         "extraction:run": "tsx src/services/extraction.service.ts"
     },
     "dependencies": {
+        "@csv/types": "workspace:*",
+        "axios": "^1.13.2",
+        "cheerio": "^1.1.2",
+        "cors": "^2.8.5",
+        "csv-parse": "^6.1.0",
+        "dotenv": "^17.2.3",
         "express": "^4.18.2",
+        "openai": "^6.9.0",
+        "p-queue": "^9.0.0",
+        "papaparse": "^5.5.3",
         "pg": "^8.11.3",
-        "@csv/types": "workspace:*"
+        "robots-parser": "^3.0.1",
+        "zod": "^4.1.12"
     },
     "devDependencies": {
+        "@types/cors": "^2.8.19",
         "@types/express": "^4.17.21",
         "@types/jest": "^29.5.11",
         "@types/node": "^20.10.5",
+        "@types/papaparse": "^5.5.0",
         "@types/pg": "^8.11.2",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
         "@typescript-eslint/parser": "^7.0.0",

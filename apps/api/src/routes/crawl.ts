@@ -7,12 +7,13 @@ import {
     updateCrawlJob,
     cancelCrawlJob,
 } from '../services/crawl.service';
+import { digestOrchestrator } from '../services/digest-orchestration.service';
 
 const router: ExpressRouter = Router();
 
 /**
  * POST /api/v1/crawl/start
- * Create a new crawl job for a source
+ * Create a new crawl job for a source with optional multi-page options
  */
 router.post('/start', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -27,7 +28,15 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const job = await createCrawlJob(validation.data!.sourceId);
+        // Extract crawl options
+        const options = {
+            maxDepth: req.body.maxDepth ? parseInt(req.body.maxDepth, 10) : undefined,
+            maxPages: req.body.maxPages ? parseInt(req.body.maxPages, 10) : undefined,
+            concurrency: req.body.concurrency ? parseInt(req.body.concurrency, 10) : undefined,
+            useMultiPage: req.body.useMultiPage === true || req.body.useMultiPage === 'true',
+        };
+
+        const job = await createCrawlJob(validation.data!.sourceId, options);
 
         res.status(201).json({
             data: job,
@@ -184,6 +193,35 @@ router.delete('/jobs/:jobId', async (req: Request, res: Response): Promise<void>
         res.status(500).json({
             error: 'Failed to cancel crawl job',
             message: process.env.NODE_ENV === 'development' ? message : undefined,
+            timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+/**
+ * GET /api/v1/crawl/:jobId/digest
+ * Get the LLM-generated digest for a crawl job
+ */
+router.get('/:jobId/digest', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const digest = await digestOrchestrator.getDigestByJobId(req.params.jobId);
+
+        if (!digest) {
+            res.status(404).json({
+                error: 'Digest not found for this crawl job',
+                timestamp: new Date().toISOString(),
+            });
+            return;
+        }
+
+        res.json({
+            data: digest,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('[Crawl API] GET /:jobId/digest error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch digest',
             timestamp: new Date().toISOString(),
         });
     }

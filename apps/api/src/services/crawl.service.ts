@@ -1,5 +1,8 @@
 import { query, queryOne } from '@csv/db';
-import { CrawlJob } from '@csv/types';
+import { createCrawler } from './crawler.service';
+import { createMultiPageCrawler } from './multi-page-crawler.service';
+import { digestOrchestrator } from './digest-orchestration.service';
+import { CrawlJob, SourceCrawlConfig } from '@csv/types';
 
 /**
  * Validate that the provided sourceId exists in the database
@@ -17,6 +20,10 @@ async function validateSourceExists(sourceId: string): Promise<boolean> {
  */
 export interface CreateCrawlJobInput {
     sourceId: string;
+    maxDepth?: number;
+    maxPages?: number;
+    concurrency?: number;
+    useMultiPage?: boolean; // Flag to use multi-page crawler
 }
 
 export function validateCrawlJob(data: unknown): {
@@ -50,27 +57,59 @@ export function validateCrawlJob(data: unknown): {
 }
 
 /**
- * Create a new crawl job for a source
- * Status is initialized as 'pending'; actual crawling happens in Story #6
+ * Create a new crawl job for a source with optional multi-page crawling
  */
-export async function createCrawlJob(sourceId: string): Promise<CrawlJob> {
+export async function createCrawlJob(
+    sourceId: string,
+    options?: {
+        maxDepth?: number;
+        maxPages?: number;
+        concurrency?: number;
+        useMultiPage?: boolean;
+    }
+): Promise<CrawlJob> {
     // Verify source exists
     const sourceExists = await validateSourceExists(sourceId);
     if (!sourceExists) {
         throw new Error('Source not found');
     }
 
+    const maxDepth = options?.maxDepth ?? 1;
+    const maxPages = options?.maxPages ?? (options?.useMultiPage ? 50 : 1);
+    const useMultiPage = options?.useMultiPage ?? false;
+
     // Insert new job with pending status
     const job = await queryOne<CrawlJob>(
-        `INSERT INTO crawl_jobs (source_id, status, items_crawled, items_new, created_at, updated_at)
-     VALUES ($1, 'pending', 0, 0, NOW(), NOW())
-     RETURNING id, source_id, status, items_crawled, items_new, started_at, completed_at, error_message, created_at, updated_at`,
-        [sourceId]
+        `INSERT INTO crawl_jobs (
+            source_id, status, items_crawled, items_new,
+            max_depth, max_pages, crawl_config,
+            created_at, updated_at
+        )
+        VALUES ($1, 'pending', 0, 0, $2, $3, $4, NOW(), NOW())
+        RETURNING id, source_id as "sourceId", status, 
+            items_crawled as "itemsCrawled", items_new as "itemsNew",
+            pages_crawled as "pagesCrawled", pages_new as "pagesNew",
+            pages_failed as "pagesFailed", pages_skipped as "pagesSkipped",
+            max_depth as "maxDepth", max_pages as "maxPages",
+            started_at as "startedAt", completed_at as "completedAt",
+            error_message as "errorMessage",
+            created_at as "createdAt", updated_at as "updatedAt"`,
+        [
+            sourceId,
+            maxDepth,
+            maxPages,
+            JSON.stringify({ useMultiPage, ...options }),
+        ]
     );
 
     if (!job) {
         throw new Error('Failed to create crawl job');
     }
+
+    // Start crawling in the background (don't await)
+    executeCrawlJob(job.id, sourceId, { ...options, useMultiPage }).catch(error => {
+        console.error(`[CrawlService] Background crawl failed for job ${job.id}:`, error);
+    });
 
     return job;
 }
@@ -239,4 +278,116 @@ export async function cancelCrawlJob(jobId: string, reason: string = 'Manually c
         completedAt: new Date(),
         errorMessage: reason,
     });
+}
+
+/**
+ * Execute a crawl job in the background
+ * Supports both single-page and multi-page crawling, followed by LLM-based digest generation
+ */
+async function executeCrawlJob(
+    jobId: string,
+    sourceId: string,
+    options?: {
+        useMultiPage?: boolean;
+        maxDepth?: number;
+        maxPages?: number;
+        concurrency?: number;
+    }
+): Promise<void> {
+    try {
+        console.log(`[CrawlService] === Starting crawl job ${jobId} ===`);
+        console.log(`[CrawlService] Source: ${sourceId}`);
+        console.log(`[CrawlService] Options:`, JSON.stringify(options, null, 2));
+
+        // Get source info
+        const source = await queryOne<{ url: string; name: string; crawl_config: any }>(
+            'SELECT url, name, crawl_config FROM sources WHERE id = $1',
+            [sourceId]
+        );
+
+        if (!source) {
+            console.error(`[CrawlService] Source ${sourceId} not found in database`);
+            throw new Error('Source not found');
+        }
+
+        console.log(`[CrawlService] Source details:`, {
+            name: source.name,
+            url: source.url,
+            hasConfig: !!source.crawl_config
+        });
+
+        const useMultiPage = options?.useMultiPage ?? false;
+
+        if (useMultiPage) {
+            // Multi-page crawling with pagination detection
+            console.log(`[CrawlService] ✓ Multi-page mode enabled`);
+            console.log(`[CrawlService] Starting MULTI-PAGE crawl for job ${jobId}, source ${sourceId}`);
+
+            const config: SourceCrawlConfig = {
+                baseUrl: source.url,
+                maxDepth: options?.maxDepth ?? 2,
+                maxPages: options?.maxPages ?? 50,
+                concurrency: options?.concurrency ?? 3,
+                ...(source.crawl_config || {}),
+            };
+
+            console.log(`[CrawlService] Crawl config:`, JSON.stringify(config, null, 2));
+
+            const multiPageCrawler = createMultiPageCrawler(config);
+            const stats = await multiPageCrawler.crawlSource(sourceId, jobId);
+            
+            console.log(`[CrawlService] ✓ Multi-page crawl completed for job ${jobId}`);
+            console.log(`[CrawlService] Stats:`, JSON.stringify(stats, null, 2));
+
+        } else {
+            // Single-page crawling (legacy)
+            console.log(`[CrawlService] Using SINGLE-PAGE mode (legacy)`);
+            console.log(`[CrawlService] Starting SINGLE-PAGE crawl for job ${jobId}, source ${sourceId}`);
+            const crawler = createCrawler();
+            await crawler.crawlSource(sourceId, jobId);
+            console.log(`[CrawlService] ✓ Single-page crawl completed for job ${jobId}`);
+        }
+
+        // Check if documents were created
+        const docCount = await queryOne<{ count: number }>(
+            'SELECT COUNT(*) as count FROM documents WHERE crawl_job_id = $1',
+            [jobId]
+        );
+        console.log(`[CrawlService] Documents created: ${docCount?.count ?? 0}`);
+
+        if (!docCount || docCount.count === 0) {
+            console.warn(`[CrawlService] ⚠️ No documents created, skipping digest generation`);
+            return;
+        }
+
+        // Generate LLM-based digest
+        console.log(`[CrawlService] === Starting digest generation ===`);
+        console.log(`[CrawlService] Job ID: ${jobId}`);
+        console.log(`[CrawlService] Source ID: ${sourceId}`);
+
+        const digest = await digestOrchestrator.processAndGenerateDigest(jobId, sourceId);
+        
+        if (digest) {
+            console.log(`[CrawlService] ✓✓✓ Digest generated successfully ✓✓✓`);
+            console.log(`[CrawlService] Digest ID: ${digest.id}`);
+            console.log(`[CrawlService] Highlights: ${digest.highlights.length}`);
+            console.log(`[CrawlService] Datapoints: ${digest.datapoints.length}`);
+            console.log(`[CrawlService] Summary path: ${digest.summaryMarkdownPath}`);
+        } else {
+            console.warn(`[CrawlService] ⚠️ No digest generated (no relevant content found)`);
+        }
+
+        console.log(`[CrawlService] === Crawl job ${jobId} completed ===`);
+
+    } catch (error) {
+        console.error(`[CrawlService] ❌ Crawl failed for job ${jobId}:`, error);
+        console.error(`[CrawlService] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+        
+        // Update job with error
+        await updateCrawlJob(jobId, {
+            status: 'failed',
+            completedAt: new Date(),
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
 }

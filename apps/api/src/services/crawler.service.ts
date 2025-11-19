@@ -1,9 +1,33 @@
 import { createHash } from 'crypto';
-import fetch from 'node-fetch';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { query, queryOne } from '@csv/db';
-import { Source, CrawledDocument } from '@csv/types';
+import type { Source } from '@csv/types';
 import { robotsParser } from './robots.parser';
 import * as crawlService from './crawl.service';
+
+/**
+ * Crawled Document interface (matches documents table)
+ */
+interface CrawledDocument {
+    id: string;
+    source_id: string;
+    title: string;
+    url: string;
+    content: string | null;
+    content_hash: string;
+    classification: string;
+    country: string | null;
+    sector: string | null;
+    themes: string[] | null;
+    extracted_data: Record<string, unknown>;
+    confidence: number;
+    verified: boolean;
+    published_at: Date | null;
+    crawled_at: Date;
+    created_at: Date;
+    updated_at: Date;
+}
 
 /**
  * Configuration for LLM API calls
@@ -16,7 +40,7 @@ export interface LLMConfig {
 
 /**
  * LLM Crawler Service
- * Fetches URLs, extracts content via LLM, deduplicates, stores documents
+ * Fetches URLs, extracts content via HTML parsing (or optionally LLM), deduplicates, stores documents
  */
 export class CrawlerService {
     private config: LLMConfig;
@@ -24,14 +48,15 @@ export class CrawlerService {
     private rateLimitMs = 1000; // 1 second between requests per source
 
     constructor(config: LLMConfig) {
-        if (!config.apiKey) {
-            throw new Error('LLM_API_KEY environment variable is required');
-        }
         this.config = {
-            apiKey: config.apiKey,
+            apiKey: config.apiKey || '',
             model: config.model || 'gpt-4-turbo',
             baseUrl: config.baseUrl || 'https://api.openai.com/v1',
         };
+
+        if (!this.config.apiKey) {
+            console.log('[Crawler] No LLM API key provided, using simple HTML extraction');
+        }
     }
 
     /**
@@ -57,35 +82,72 @@ export class CrawlerService {
     }
 
     /**
-     * Fetch content from URL using LLM
+     * Fetch content from URL using simple HTML parsing (no LLM)
+     * Extracts text content from HTML using cheerio
      */
-    private async fetchContentViaLLM(url: string): Promise<string> {
+    private async fetchContent(url: string): Promise<{ title: string; content: string }> {
         try {
-            // First, fetch the HTML
-            const response = await Promise.race([
-                fetch(url),
-                new Promise<Response>((_, reject) =>
-                    setTimeout(() => reject(new Error('Timeout')), 10000)
-                ),
-            ]);
+            const response = await axios.get(url, {
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'CSV-Crawler/1.0 (Policy monitoring bot)',
+                },
+            });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const html = response.data;
+            const $ = cheerio.load(html);
+
+            // Remove script and style tags
+            $('script, style, nav, header, footer').remove();
+
+            // Extract title
+            const title = $('title').text().trim() || $('h1').first().text().trim() || 'Untitled';
+
+            // Extract main content - try to find main content areas first
+            let content = '';
+            const mainSelectors = ['main', 'article', '.content', '#content', '.main', '#main'];
+            
+            for (const selector of mainSelectors) {
+                const mainContent = $(selector).text();
+                if (mainContent && mainContent.length > 100) {
+                    content = mainContent;
+                    break;
+                }
             }
 
-            const html = await (response as any).text();
+            // Fallback: get all body text
+            if (!content) {
+                content = $('body').text();
+            }
 
-            // Call LLM to extract content
-            return await this.extractContentViaLLM(html, url);
+            // Clean up whitespace
+            content = content.replace(/\s+/g, ' ').trim();
+
+            if (!content || content.length < 50) {
+                throw new Error('Insufficient content extracted from page');
+            }
+
+            return { title, content };
         } catch (error) {
+            if (axios.isAxiosError(error)) {
+                throw new Error(`Failed to fetch ${url}: ${error.message}`);
+            }
             throw new Error(`Failed to fetch ${url}: ${(error as Error).message}`);
         }
     }
 
     /**
-     * Send HTML to LLM for content extraction
+     * Send HTML to LLM for content extraction (optional, falls back to simple extraction)
      */
     private async extractContentViaLLM(html: string, url: string): Promise<string> {
+        // If no API key configured, skip LLM
+        if (!this.config.apiKey) {
+            console.log('[Crawler] No LLM API key, using simple extraction');
+            const $ = cheerio.load(html);
+            $('script, style, nav, header, footer').remove();
+            return $('body').text().replace(/\s+/g, ' ').trim();
+        }
+
         const systemPrompt = `You are a regulatory policy content extractor. Extract and summarize the main policy content from the provided HTML, focusing on:
 - Policy titles and summaries
 - Regulatory updates or changes
@@ -98,30 +160,23 @@ Return only the extracted content, without HTML tags or metadata.`;
         const userPrompt = `Extract policy content from this HTML (from ${url}):\n\n${html.substring(0, 10000)}`;
 
         try {
-            const llmResponse = await fetch(`${this.config.baseUrl}/chat/completions`, {
-                method: 'POST',
+            const llmResponse = await axios.post(`${this.config.baseUrl}/chat/completions`, {
+                model: this.config.model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                temperature: 0.3,
+                max_tokens: 2000,
+            }, {
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${this.config.apiKey}`,
+                    'Authorization': `Bearer ${this.config.apiKey}`,
                 },
-                body: JSON.stringify({
-                    model: this.config.model,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt },
-                    ],
-                    temperature: 0.3,
-                    max_tokens: 2000,
-                }),
+                timeout: 30000,
             });
 
-            if (!llmResponse.ok) {
-                const error = await (llmResponse as any).json();
-                throw new Error(`LLM API error: ${error.error?.message || 'Unknown error'}`);
-            }
-
-            const data = (await (llmResponse as any).json()) as any;
-            const content = data.choices?.[0]?.message?.content;
+            const content = llmResponse.data.choices?.[0]?.message?.content;
 
             if (!content) {
                 throw new Error('Empty response from LLM');
@@ -129,6 +184,10 @@ Return only the extracted content, without HTML tags or metadata.`;
 
             return content;
         } catch (error) {
+            if (axios.isAxiosError(error)) {
+                console.error('[Crawler] LLM API error:', error.response?.data || error.message);
+                throw new Error(`LLM extraction failed: ${error.message}`);
+            }
             throw new Error(`LLM extraction failed: ${(error as Error).message}`);
         }
     }
@@ -138,7 +197,7 @@ Return only the extracted content, without HTML tags or metadata.`;
      */
     private async checkDuplicate(contentHash: string): Promise<CrawledDocument | null> {
         return queryOne<CrawledDocument>(
-            'SELECT * FROM crawled_documents WHERE content_hash = $1',
+            'SELECT * FROM documents WHERE content_hash = $1',
             [contentHash]
         );
     }
@@ -149,14 +208,18 @@ Return only the extracted content, without HTML tags or metadata.`;
     private async storeCrawledDocument(
         sourceId: string,
         url: string,
+        title: string,
         content: string,
         contentHash: string
     ): Promise<CrawledDocument> {
         const doc = await queryOne<CrawledDocument>(
-            `INSERT INTO crawled_documents (source_id, url, content, content_hash, extracted_at, created_at)
-       VALUES ($1, $2, $3, $4, NOW(), NOW())
-       RETURNING id, source_id, url, content, content_hash, extracted_at, created_at`,
-            [sourceId, url, content, contentHash]
+            `INSERT INTO documents (
+                source_id, title, url, content, content_hash, 
+                classification, crawled_at, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, 'policy', NOW(), NOW(), NOW())
+            RETURNING *`,
+            [sourceId, title, url, content, contentHash]
         );
 
         if (!doc) {
@@ -187,18 +250,19 @@ Return only the extracted content, without HTML tags or metadata.`;
             // Rate limit
             await this.enforceRateLimit(sourceId);
 
-            // Fetch content via LLM
-            const content = await this.fetchContentViaLLM(url);
+            // Fetch content using simple extraction
+            const { title, content } = await this.fetchContent(url);
             const contentHash = this.computeHash(content);
 
             // Check for duplicate
             const duplicate = await this.checkDuplicate(contentHash);
             if (duplicate) {
+                console.log(`[Crawler] Duplicate content found for ${url}`);
                 return { isNew: false };
             }
 
             // Store new document
-            const document = await this.storeCrawledDocument(sourceId, url, content, contentHash);
+            const document = await this.storeCrawledDocument(sourceId, url, title, content, contentHash);
 
             return { isNew: true, document };
         } catch (error) {
