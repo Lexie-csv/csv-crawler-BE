@@ -259,3 +259,155 @@ export interface PaginatedResponse<T> {
     readonly totalPages: number;
     readonly hasMore: boolean;
 }
+
+// ============================================
+// PDF RPA Crawler Types
+// ============================================
+
+/**
+ * Configuration for PDF-focused RPA crawler
+ */
+export interface PdfSourceConfig {
+    readonly name: string;                  // "DOE-main", "DOE-ERC"
+    readonly startUrl: string;              // e.g. https://doe.gov.ph/
+    readonly domainAllowlist: string[];     // ["doe.gov.ph", "legacy.doe.gov.ph"]
+    readonly downloadDir: string;           // e.g. storage/downloads/doe
+    readonly maxDepth: number;              // e.g. 2 or 3
+    readonly maxPages: number;              // e.g. 100
+    readonly pdfLinkSelectorHints?: string[]; // e.g. ["a[href$='.pdf']", "a:has-text('PDF')"]
+    readonly scrollToBottom?: boolean;      // Whether to scroll to load lazy content
+    readonly headless?: boolean;            // Run in headless mode (default: true)
+    // HTML content analysis config (optional)
+    readonly analyzeHtml?: boolean;         // Enable HTML page content analysis (default: false)
+    readonly htmlConfig?: {
+        readonly contentSelector?: string;  // CSS selector for main content area (e.g., '.main-content')
+        readonly tableSelector?: string;    // CSS selector for data tables (e.g., 'table.data')
+        readonly announcementSelector?: string; // CSS selector for announcements (e.g., '.announcement')
+        readonly extractMetadata?: boolean; // Extract page title, description, etc. (default: true)
+        readonly extractTables?: boolean;   // Extract table data (default: true)
+        readonly minTextLength?: number;    // Minimum text length to analyze (default: 100)
+    };
+}
+
+/**
+ * Downloaded PDF metadata
+ */
+export interface DownloadedPdf {
+    readonly sourceName: string;
+    readonly sourceUrl: string;
+    readonly filePath: string;
+    readonly fileName: string;
+    readonly downloadedAt: Date;
+    readonly fileSizeBytes: number;
+}
+
+/**
+ * Extracted policy document from PDF (LLM output)
+ */
+export interface ExtractedPolicyDocument {
+    readonly is_relevant: boolean;
+    readonly reason: string;
+    readonly category: 'circular' | 'order' | 'resolution' | 'tariff_update' | 'rate_change' | 'guideline' | 'other';
+    readonly title: string;
+    readonly source_url: string;
+    readonly issuing_body: string;          // "DOE" | "ERC" | "other agency name" | "unknown"
+    readonly published_date: string | null; // "YYYY-MM-DD" or null
+    readonly effective_date: string | null; // "YYYY-MM-DD" or null
+    readonly jurisdiction: string;          // "Philippines"
+    readonly summary: string;               // 3-5 sentence summary
+    readonly key_numbers: Array<{
+        name: string;
+        value: number;
+        unit: string;
+    }>;
+    readonly topics: string[];              // ["electric_power", "tariff", "market_rules"]
+    readonly raw_text_hash?: string;        // SHA256 hash for deduplication
+    readonly raw_text_excerpt?: string;     // First ~2000 chars of raw text
+    readonly file_path?: string;            // Local file path if downloaded
+}
+
+/**
+ * Extracted HTML content from a webpage
+ */
+export interface ExtractedHtmlContent {
+    readonly is_relevant: boolean;
+    readonly reason: string;
+    readonly category: 'circular' | 'order' | 'resolution' | 'announcement' | 'news' | 'table_data' | 'other';
+    readonly title: string;
+    readonly source_url: string;
+    readonly issuing_body: string;
+    readonly published_date: string | null;
+    readonly effective_date: string | null;
+    readonly jurisdiction: string;
+    readonly summary: string;
+    readonly key_numbers: Array<{
+        name: string;
+        value: number;
+        unit: string;
+    }>;
+    readonly topics: string[];
+    readonly content_type: 'html_page' | 'html_table' | 'html_announcement';
+    readonly raw_text_excerpt: string;      // First 500 chars of extracted text
+    readonly raw_text_hash: string;         // SHA256 for deduplication
+}
+
+/**
+ * Raw HTML content extracted from page
+ */
+export interface HtmlPageContent {
+    readonly url: string;
+    readonly title: string;
+    readonly metaDescription: string | null;
+    readonly mainText: string;
+    readonly tables: Array<{
+        headers: string[];
+        rows: string[][];
+    }>;
+    readonly announcements: string[];
+    readonly metadata: Record<string, string>;
+}
+
+/**
+ * Stored policy document (database record)
+ */
+export interface PolicyDocument {
+    readonly id: string;                    // UUID
+    readonly sourceName: string;
+    readonly sourceUrl: string;
+    readonly filePath: string;
+    readonly title: string;
+    readonly category: string;
+    readonly issuingBody: string;
+    readonly publishedDate: Date | null;
+    readonly effectiveDate: Date | null;
+    readonly summary: string;
+    readonly keyNumbers: Record<string, any>;
+    readonly topics: string[];
+    readonly rawTextHash: string;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+}
+
+/**
+ * PDF crawl job result
+ */
+export interface PdfCrawlResult {
+    readonly sourceName: string;
+    readonly startUrl: string;
+    readonly pagesVisited: number;
+    readonly pdfsDownloaded: number;
+    readonly pdfsProcessed: number;
+    readonly relevantDocuments: number;
+    readonly htmlPagesAnalyzed?: number;
+    readonly relevantHtmlPages?: number;
+    readonly errors: Array<{
+        url: string;
+        error: string;
+        timestamp: Date;
+    }>;
+    readonly downloadedPdfs: DownloadedPdf[];
+    readonly extractedDocuments: ExtractedPolicyDocument[];
+    readonly extractedHtmlContent?: ExtractedHtmlContent[];
+    readonly startedAt: Date;
+    readonly completedAt: Date;
+}

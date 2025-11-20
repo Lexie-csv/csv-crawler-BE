@@ -2,6 +2,33 @@
 
 Monitor regulatory and policy updates across PH and SEA markets. Extract key datapoints for research and financial models. Generate weekly digests and newsletters.
 
+## 🎯 Backend Alpha Available
+
+**NEW:** Complete backend-only policy scanner with headless browser support, LLM filtering, and multi-format exports (CSV, JSON, DB, Markdown).
+
+👉 **[Quick Start Guide](BACKEND_ALPHA_RELEASE.md)** | **[Full Documentation](apps/api/README_SCANNER.md)** | **[How to View Results](HOW_TO_VIEW_RESULTS.md)** ⭐
+
+```bash
+# 1. Setup and test (one time)
+cd apps/api && pnpm install && npx playwright install chromium
+
+# 2. Run a scan
+pnpm scanner scan --file example-urls.txt
+
+# 3. View results in plain English (no SQL/JSON needed!)
+pnpm view scan
+```
+
+**Key Features:**
+- ✅ Headless browser crawling (handles JS-rendered content)
+- ✅ Smart relevance filtering (90%+ accuracy with LLM)
+- ✅ Executive digests ("What changed, So what, What to watch")
+- ✅ Multi-format export (CSV, JSON, PostgreSQL, Markdown)
+- ✅ **Simple viewer - no SQL or JSON knowledge needed** ⭐
+- ✅ No UI needed - pure backend CLI
+
+---
+
 ## Architecture
 
 - **DB**: PostgreSQL with migrations
@@ -52,13 +79,18 @@ cp .env.example .env.local
 # Start all dev servers (API + Web with Turbopack)
 pnpm dev
 
-# In separate terminals:
-# API server (http://localhost:3001)
-cd apps/api && pnpm dev
+# OR run backend only (crawler feature)
+./scripts/run-crawler.sh
 
-# Web server (http://localhost:3000)
-cd apps/web && pnpm dev
+# OR run individually:
+# API only (http://localhost:3001)
+pnpm dev:api
+
+# Web only (http://localhost:3000)
+pnpm dev:web
 ```
+
+**See [docs/BACKEND_BUILD_GUIDE.md](docs/BACKEND_BUILD_GUIDE.md) for backend-only deployment.**
 
 ### Database Setup
 
@@ -78,7 +110,14 @@ pnpm db:rollback
 ### Building
 
 ```bash
+# Build everything
 pnpm build
+
+# Build backend only (API + db + types)
+pnpm build:api
+
+# Build frontend only (Web + types)
+pnpm build:web
 ```
 
 ### Testing
