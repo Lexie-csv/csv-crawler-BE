@@ -1,0 +1,14 @@
+# Test URLs - Simple sites for testing the scanner
+# These are basic sites without heavy anti-bot protection
+
+# SEC - Basic listing page
+https://www.sec.gov.ph/
+
+# BIR - Revenue issuances
+https://www.bir.gov.ph/
+
+# Philippine Competition Commission
+https://www.phcc.gov.ph/
+
+# Department of Trade and Industry
+https://www.dti.gov.ph/

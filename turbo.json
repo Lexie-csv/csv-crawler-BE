@@ -1,0 +1,41 @@
+{
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**"],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "outputs": ["coverage/**"],
+      "cache": true
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": [],
+      "cache": true
+    },
+    "format": {
+      "outputs": [],
+      "cache": false
+    },
+    "format:check": {
+      "outputs": [],
+      "cache": true
+    },
+    "type-check": {
+      "outputs": [],
+      "cache": true
+    },
+    "clean": {
+      "cache": false,
+      "outputs": ["dist/**", ".next/**"]
+    }
+  }
+}

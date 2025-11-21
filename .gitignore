@@ -1,0 +1,53 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables - NEVER commit
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+/apps/api/.env
+apps/api/.env
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+apps/web/tsconfig.tsbuildinfo
+
+# Testing
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# My Next App (unused)
+my-next-app/
+
+# Storage - downloaded PDFs, OCR outputs, crawl results
+apps/api/storage/downloads/
+apps/api/storage/ocr/
+apps/api/storage/pdf-crawls/
+apps/api/storage/digests/
+apps/api/storage/exports/
+
+# Temporary files
+*.tmp
+tmp/

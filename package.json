@@ -1,0 +1,62 @@
+{
+    "name": "csv-crawler",
+    "version": "1.0.0",
+    "description": "CSV Policy & Data Crawler - Monitor regulatory/policy updates and extract key datapoints",
+    "private": true,
+    "type": "module",
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev": "turbo run dev --parallel",
+        "dev:api": "turbo run dev --filter=@csv/api --filter=@csv/types --filter=@csv/db",
+        "dev:web": "turbo run dev --filter=@csv/web --filter=@csv/types",
+        "build": "turbo run build",
+        "build:api": "turbo run build --filter=@csv/api --filter=@csv/types --filter=@csv/db",
+        "build:web": "turbo run build --filter=@csv/web --filter=@csv/types",
+        "start:api": "cd apps/api && pnpm start",
+        "crawler": "./scripts/run-crawler.sh",
+        "crawler:test": "./scripts/test-crawler.sh",
+        "scanner": "cd apps/api && pnpm scanner",
+        "scanner:test": "cd apps/api && ./quick-test.sh",
+        "test": "turbo run test",
+        "test:api": "turbo run test --filter=@csv/api --filter=@csv/types --filter=@csv/db",
+        "test:web": "turbo run test --filter=@csv/web --filter=@csv/types",
+        "test:watch": "turbo run test:watch",
+        "test:app": "./scripts/test-app.sh",
+        "lint": "turbo run lint",
+        "lint:api": "turbo run lint --filter=@csv/api --filter=@csv/types --filter=@csv/db",
+        "lint:web": "turbo run lint --filter=@csv/web --filter=@csv/types",
+        "format": "turbo run format",
+        "format:check": "turbo run format:check",
+        "type-check": "turbo run type-check",
+        "type-check:api": "turbo run type-check --filter=@csv/api --filter=@csv/types --filter=@csv/db",
+        "type-check:web": "turbo run type-check --filter=@csv/web --filter=@csv/types",
+        "clean": "turbo run clean && rm -rf node_modules",
+        "db:migrate": "cd packages/db && node --import tsx ./src/cli.ts migrate"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.5",
+        "@types/node-cron": "^3.0.11",
+        "@types/node-fetch": "^2.6.13",
+        "@types/nodemailer": "^7.0.3",
+        "@typescript-eslint/eslint-plugin": "^7.0.0",
+        "@typescript-eslint/parser": "^7.0.0",
+        "commitlint": "^18.4.3",
+        "eslint": "^9.0.0",
+        "eslint-config-next": "^14.0.4",
+        "husky": "^8.0.3",
+        "prettier": "^3.1.1",
+        "tsx": "^4.7.0",
+        "turbo": "^1.10.16",
+        "typescript": "^5.3.3"
+    },
+    "dependencies": {
+        "next": "^16.0.1",
+        "node-cron": "^4.2.1",
+        "node-fetch": "^2.7.0",
+        "node-tesseract-ocr": "^2.2.1",
+        "nodemailer": "^7.0.10"
+    }
+}

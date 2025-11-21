@@ -1,0 +1,21 @@
+# CSV Policy & Market Scanner - Example URLs
+# Philippine regulatory and policy sources
+# One URL per line, # for comments
+
+# Securities & Finance
+https://www.sec.gov.ph/circulars/
+https://www.bsp.gov.ph/Regulations/Issuances.aspx
+
+# Energy Sector
+https://www.doe.gov.ph/department-circulars
+https://www.erc.gov.ph/ContentPage/37
+https://www.wesm.ph/market-updates
+
+# Taxation & Revenue
+https://www.bir.gov.ph/index.php/tax-information/revenue-issuances.html
+
+# Trade & Industry
+https://www.dti.gov.ph/announcements/
+
+# Central Bank
+https://www.bsp.gov.ph/Pages/MonetaryPolicyAnnouncements.aspx

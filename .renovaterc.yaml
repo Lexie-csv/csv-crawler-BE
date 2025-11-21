@@ -1,0 +1,11 @@
+extends:
+  - config:base
+  - schedule:weekly
+  - groupName:allDependencies
+    groupSlug: all-deps-minor
+    updateTypes:
+      - minor
+      - patch
+      - pin
+      - digest
+    automerge: true

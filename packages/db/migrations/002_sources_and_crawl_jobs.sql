@@ -1,0 +1,3 @@
+-- LEGACY: This migration has been moved to `migrations/legacy/002_sources_and_crawl_jobs.sql`.
+-- The project now uses UUID-based IDs and `001_init_schema.sql` is canonical.
+-- Left here as a placeholder for history; do not re-add SERIAL-based schema.

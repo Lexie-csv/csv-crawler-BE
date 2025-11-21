@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #FAFAFA;
+        color: #111827;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        line-height: 1.3;
+    }
+}
+
+@layer components {
+    /* CSV Radar Utilities */
+    .radar-card {
+        @apply bg-white border border-gray-200 rounded-xl p-4 shadow-sm;
+    }
+
+    .radar-badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    }
+
+    .radar-badge-pending {
+        @apply radar-badge bg-amber-100 text-amber-800;
+    }
+
+    .radar-badge-running {
+        @apply radar-badge bg-sky-100 text-sky-800;
+    }
+
+    .radar-badge-completed {
+        @apply radar-badge bg-green-100 text-green-800;
+    }
+
+    .radar-badge-failed {
+        @apply radar-badge bg-red-100 text-red-800;
+    }
+
+    .formatted-content {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #6B7280;
+    }
+
+    .formatted-content h4 {
+        font-weight: 600;
+        color: #111827;
+        line-height: 1.3;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .formatted-content p {
+        margin-bottom: 0.75rem;
+    }
+
+    /* Screen reader only */
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+    }
+}

@@ -1,0 +1,184 @@
+import { Page } from 'playwright';
+import type { HtmlPageContent, PdfSourceConfig } from '../../../../packages/types/src/index.js';
+
+/**
+ * Service to extract structured content from HTML pages
+ * Extracts text, tables, announcements, and metadata based on CSS selectors
+ */
+export class HtmlContentExtractor {
+    /**
+     * Extract content from a Playwright page based on htmlConfig selectors
+     */
+    async extractPageContent(
+        page: Page,
+        htmlConfig: NonNullable<PdfSourceConfig['htmlConfig']>
+    ): Promise<HtmlPageContent | null> {
+        try {
+            const url = page.url();
+            console.log(`[HTML-EXTRACT] Extracting content from ${url}`);
+
+            // Extract all content using page.evaluate to run in browser context
+            // @ts-ignore - document and DOM APIs available in browser context
+            const extracted = await page.evaluate(
+                function(config) {
+                    const contentSelector = config.contentSelector;
+                    const tableSelector = config.tableSelector;
+                    const announcementSelector = config.announcementSelector;
+                    const extractMetadata = config.extractMetadata;
+                    const extractTables = config.extractTables;
+                    const minTextLength = config.minTextLength;
+                    
+                    // Helper: Clean text (remove extra whitespace)
+                    function cleanText(text) {
+                        return text
+                            .replace(/\s+/g, ' ')
+                            .replace(/\n+/g, '\n')
+                            .trim();
+                    }
+
+                    // Extract title
+                    const title = document.querySelector('title')?.textContent?.trim() || '';
+
+                    // Extract meta description
+                    const metaDesc = document.querySelector('meta[name="description"]')?.getAttribute('content') || null;
+
+                    // Extract main text content
+                    let mainText = '';
+                    if (contentSelector) {
+                        const contentElements = document.querySelectorAll(contentSelector);
+                        const textParts = [];
+                        contentElements.forEach(function(el) {
+                            const text = el.textContent || '';
+                            if (text.trim()) {
+                                textParts.push(cleanText(text));
+                            }
+                        });
+                        mainText = textParts.join('\n\n');
+                    } else {
+                        // Fallback: extract from body, excluding script/style tags
+                        const bodyClone = document.body.cloneNode(true);
+                        bodyClone.querySelectorAll('script, style, nav, header, footer').forEach(function(el) { el.remove(); });
+                        mainText = cleanText(bodyClone.textContent || '');
+                    }
+
+                    // Extract tables
+                    const tables = [];
+                    if (extractTables && tableSelector) {
+                        const tableElements = document.querySelectorAll(tableSelector);
+                        tableElements.forEach(function(table) {
+                            const headers = [];
+                            const rows = [];
+
+                            // Extract headers
+                            table.querySelectorAll('thead th, thead td').forEach(function(th) {
+                                headers.push(cleanText(th.textContent || ''));
+                            });
+
+                            // If no thead, try first row
+                            if (headers.length === 0) {
+                                const firstRow = table.querySelector('tr');
+                                firstRow?.querySelectorAll('th, td').forEach(function(cell) {
+                                    headers.push(cleanText(cell.textContent || ''));
+                                });
+                            }
+
+                            // Extract data rows
+                            table.querySelectorAll('tbody tr').forEach(function(tr) {
+                                const row = [];
+                                tr.querySelectorAll('td').forEach(function(td) {
+                                    row.push(cleanText(td.textContent || ''));
+                                });
+                                if (row.length > 0) {
+                                    rows.push(row);
+                                }
+                            });
+
+                            if (headers.length > 0 || rows.length > 0) {
+                                tables.push({ headers, rows });
+                            }
+                        });
+                    }
+
+                    // Extract announcements
+                    const announcements = [];
+                    if (announcementSelector) {
+                        const announcementElements = document.querySelectorAll(announcementSelector);
+                        announcementElements.forEach(function(el) {
+                            const text = cleanText(el.textContent || '');
+                            if (text.length >= (minTextLength || 50)) {
+                                announcements.push(text);
+                            }
+                        });
+                    }
+
+                    // Extract metadata
+                    const metadata = {};
+                    if (extractMetadata) {
+                        // Common meta tags
+                        const metaTags = document.querySelectorAll('meta[name], meta[property]');
+                        metaTags.forEach(function(meta) {
+                            const name = meta.getAttribute('name') || meta.getAttribute('property');
+                            const content = meta.getAttribute('content');
+                            if (name && content) {
+                                metadata[name] = content;
+                            }
+                        });
+
+                        // Open Graph tags
+                        const ogTags = document.querySelectorAll('meta[property^="og:"]');
+                        ogTags.forEach(function(meta) {
+                            const property = meta.getAttribute('property');
+                            const content = meta.getAttribute('content');
+                            if (property && content) {
+                                metadata[property] = content;
+                            }
+                        });
+                    }
+
+                    return {
+                        title: title,
+                        metaDescription: metaDesc,
+                        mainText: mainText,
+                        tables: tables,
+                        announcements: announcements,
+                        metadata: metadata,
+                    };
+                },
+                {
+                    contentSelector: htmlConfig.contentSelector,
+                    tableSelector: htmlConfig.tableSelector,
+                    announcementSelector: htmlConfig.announcementSelector,
+                    extractMetadata: htmlConfig.extractMetadata || false,
+                    extractTables: htmlConfig.extractTables || false,
+                    minTextLength: htmlConfig.minTextLength || 100,
+                }
+            );
+
+            // Check if extracted content meets minimum length threshold
+            const totalTextLength = extracted.mainText.length + extracted.announcements.join(' ').length;
+            if (totalTextLength < (htmlConfig.minTextLength || 100)) {
+                console.log(`[HTML-EXTRACT] Content too short (${totalTextLength} chars), skipping`);
+                return null;
+            }
+
+            const result: HtmlPageContent = {
+                url,
+                title: extracted.title,
+                metaDescription: extracted.metaDescription,
+                mainText: extracted.mainText,
+                tables: extracted.tables,
+                announcements: extracted.announcements,
+                metadata: extracted.metadata,
+            };
+
+            console.log(
+                `[HTML-EXTRACT] Extracted ${extracted.mainText.length} chars text, ${extracted.tables.length} tables, ${extracted.announcements.length} announcements`
+            );
+
+            return result;
+        } catch (error) {
+            console.error(`[HTML-EXTRACT] Error extracting content:`, error);
+            return null;
+        }
+    }
+}

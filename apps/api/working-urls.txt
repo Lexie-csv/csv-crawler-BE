@@ -1,0 +1,30 @@
+# CSV Policy & Market Scanner - WORKING URLs (Updated Nov 2025)
+# Philippine regulatory and policy sources - VERIFIED
+# One URL per line, # for comments
+
+# Securities & Exchange Commission
+https://www.sec.gov.ph/regulation-2/
+
+# Bangko Sentral ng Pilipinas (Central Bank)
+https://www.bsp.gov.ph/SitePages/MediaAndResearch/MediaDisp.aspx?ItemId=6772
+
+# Department of Energy
+https://doe.gov.ph/issuances
+
+# Energy Regulatory Commission
+https://www.erc.gov.ph/Issuances
+
+# Bureau of Internal Revenue
+https://www.bir.gov.ph/index.php/revenue-issuances.html
+
+# Philippine Competition Commission
+https://www.phcc.gov.ph/advisories/
+
+# WESM (Wholesale Electricity Spot Market)
+https://www.wesm.ph/
+
+# National Electrification Administration
+https://www.nea.gov.ph/announcements
+
+# Department of Trade and Industry
+https://www.dti.gov.ph/news/circulars-orders-and-memoranda/
