@@ -14,6 +14,7 @@ export interface Source {
     readonly frequency?: 'daily' | 'weekly' | 'monthly' | 'ad-hoc';
     readonly active: boolean;
     readonly crawlConfig?: SourceCrawlConfig | null;
+    readonly extractionPrompt?: string | null; // Custom LLM prompt for this source
     readonly createdAt: Date;
     readonly updatedAt: Date;
 }
@@ -175,6 +176,20 @@ export interface SourceCrawlConfig {
     readonly blockedPathPatterns?: string[]; // regex patterns for blocked paths
     readonly paginationSelectors?: string[]; // CSS selectors for pagination links
     readonly followExternalLinks?: boolean;  // whether to follow external domains
+}
+
+/**
+ * CrawlerConfig: Per-source crawler configuration overrides
+ * Stored in sources.crawler_config JSONB column
+ */
+export interface CrawlerConfig {
+    readonly maxDepth?: number;
+    readonly maxPages?: number;
+    readonly skipCategoryPages?: boolean;
+    readonly articleIndicators?: string[];
+    readonly concurrency?: number;
+    readonly allowedPathPatterns?: string[];
+    readonly blockedPathPatterns?: string[];
 }
 
 /**
@@ -400,6 +415,9 @@ export interface PdfCrawlResult {
     readonly relevantDocuments: number;
     readonly htmlPagesAnalyzed?: number;
     readonly relevantHtmlPages?: number;
+    readonly newDocuments?: number;
+    readonly updatedDocuments?: number;
+    readonly unchangedDocuments?: number;
     readonly errors: Array<{
         url: string;
         error: string;

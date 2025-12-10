@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 
 async function testDoeAccess() {
     console.log('🔍 Testing DOE site access...\n');
-    
+
     const browser = await chromium.launch({
         headless: false, // Run in headed mode to see what happens
         args: [
@@ -26,7 +26,7 @@ async function testDoeAccess() {
 
     try {
         console.log('📍 Navigating to https://doe.gov.ph/');
-        
+
         const response = await page.goto('https://doe.gov.ph/', {
             waitUntil: 'domcontentloaded',
             timeout: 60000, // 60 seconds
@@ -39,10 +39,10 @@ async function testDoeAccess() {
         await page.waitForTimeout(3000);
 
         // Try to find links
-        const links = await page.$$eval('a', (anchors) => 
-            anchors.slice(0, 10).map(a => ({ 
-                text: a.textContent?.trim().substring(0, 50), 
-                href: a.href 
+        const links = await page.$$eval('a', (anchors) =>
+            anchors.slice(0, 10).map(a => ({
+                text: a.textContent?.trim().substring(0, 50),
+                href: a.href
             }))
         );
 
@@ -53,9 +53,9 @@ async function testDoeAccess() {
 
         // Look for PDF links
         const pdfLinks = await page.$$eval('a[href*=".pdf"]', (anchors) =>
-            anchors.map(a => ({ 
-                text: (a as HTMLAnchorElement).textContent?.trim(), 
-                href: (a as HTMLAnchorElement).href 
+            anchors.map(a => ({
+                text: (a as HTMLAnchorElement).textContent?.trim(),
+                href: (a as HTMLAnchorElement).href
             }))
         );
 

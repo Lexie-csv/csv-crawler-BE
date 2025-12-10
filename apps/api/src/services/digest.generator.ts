@@ -113,7 +113,7 @@ export class DigestGenerator {
             if (typeSignals.length === 0) continue;
 
             const content = this.formatSignalGroup(type, typeSignals);
-            
+
             sections.push({
                 title: this.getSignalTypeTitle(type),
                 content,
@@ -143,7 +143,7 @@ export class DigestGenerator {
         if (highPrioritySignals.length > 0) {
             try {
                 const prompt = this.buildImpactAnalysisPrompt(highPrioritySignals);
-                
+
                 const response = await this.openai.chat.completions.create({
                     model: process.env.LLM_MODEL || 'gpt-4o-mini',
                     messages: [
@@ -161,7 +161,7 @@ export class DigestGenerator {
                 });
 
                 const analysis = response.choices[0]?.message?.content || '';
-                
+
                 sections.push({
                     title: 'Market Impact',
                     content: analysis,
@@ -184,7 +184,7 @@ export class DigestGenerator {
 
         // Look for regulatory timelines
         const timelineSignals = signals.filter(s => s.type === 'regulatory_timeline' && s.effectiveDate);
-        
+
         if (timelineSignals.length > 0) {
             const upcoming = timelineSignals
                 .filter(s => s.effectiveDate && s.effectiveDate > new Date())
@@ -205,7 +205,7 @@ export class DigestGenerator {
 
         // Look for incomplete information that needs monitoring
         const lowConfidenceSignals = signals.filter(s => s.confidence < 0.7 && s.confidence >= 0.5);
-        
+
         if (lowConfidenceSignals.length > 0) {
             sections.push({
                 title: 'Areas Requiring Clarification',
@@ -343,22 +343,22 @@ export class DigestGenerator {
         const now = new Date();
         const start = new Date(now);
         start.setDate(start.getDate() - 7);
-        
+
         const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-        
+
         return `${months[start.getMonth()]} ${start.getDate()}-${now.getDate()}, ${now.getFullYear()}`;
     }
 
     private groupSignalsByType(signals: PolicySignal[]): Record<string, PolicySignal[]> {
         const groups: Record<string, PolicySignal[]> = {};
-        
+
         for (const signal of signals) {
             if (!groups[signal.type]) {
                 groups[signal.type] = [];
             }
             groups[signal.type].push(signal);
         }
-        
+
         return groups;
     }
 
@@ -391,7 +391,7 @@ export class DigestGenerator {
 
     private getSignalPriority(type: string, signals: PolicySignal[]): 'high' | 'medium' | 'low' {
         const avgConfidence = signals.reduce((sum, s) => sum + s.confidence, 0) / signals.length;
-        
+
         if (type === 'rate_change' || type === 'circular') return 'high';
         if (avgConfidence >= 0.8) return 'high';
         if (avgConfidence >= 0.6) return 'medium';
@@ -411,7 +411,7 @@ export class DigestGenerator {
 
     private buildImpactAnalysisPrompt(signals: PolicySignal[]): string {
         const signalList = signals.map(s => `- ${s.title}: ${s.description}`).join('\n');
-        
+
         return `Analyze the market/business impact of these policy changes:
 
 ${signalList}
@@ -427,9 +427,9 @@ Be specific and actionable. Focus on financial/operational implications.`;
 
     private generateSoWhatFallback(signals: PolicySignal[]): DigestSection[] {
         const sections: DigestSection[] = [];
-        
+
         const highPrioritySignals = signals.filter(s => s.confidence >= 0.7);
-        
+
         if (highPrioritySignals.length > 0) {
             sections.push({
                 title: 'Key Implications',
@@ -437,7 +437,7 @@ Be specific and actionable. Focus on financial/operational implications.`;
                 priority: 'medium',
             });
         }
-        
+
         return sections;
     }
 }

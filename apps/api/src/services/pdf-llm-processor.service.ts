@@ -32,10 +32,10 @@ export class PdfLlmProcessor {
                         const content = await fs.readFile(path.join(resultsDir, f), 'utf8');
                         const arr = JSON.parse(content) as ExtractedPolicyDocument[];
                         for (const it of arr) if (it.raw_text_hash) existingHashes.add(it.raw_text_hash);
-                    } catch {}
+                    } catch { }
                 }
             }
-        } catch {}
+        } catch { }
 
         // List PDFs in downloads dir
         const files = await fs.readdir(downloadsDir).catch(() => []);
@@ -54,7 +54,7 @@ export class PdfLlmProcessor {
                 const parser = new PDFParse({ data: fileBuffer } as any);
                 const textResult = await parser.getText();
                 const text = (textResult && textResult.text) ? textResult.text : '';
-                try { await parser.destroy(); } catch {}
+                try { await parser.destroy(); } catch { }
 
                 const hash = crypto.createHash('sha256').update(text).digest('hex');
                 if (existingHashes.has(hash)) {
@@ -166,10 +166,10 @@ Respond only with a single JSON object matching the schema. Do not output any su
         // Save raw response for debugging/audit
         try {
             const rawDir = path.join('./storage/pdf-crawls/raw-responses', args.sourceName);
-            await fs.mkdir(rawDir, { recursive: true }).catch(() => {});
+            await fs.mkdir(rawDir, { recursive: true }).catch(() => { });
             const stamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
             const outFile = path.join(rawDir, `${stamp}_${crypto.createHash('sha1').update(content).digest('hex')}.txt`);
-            await fs.writeFile(outFile, content, 'utf8').catch(() => {});
+            await fs.writeFile(outFile, content, 'utf8').catch(() => { });
         } catch (e) {
             // non-blocking
         }
@@ -245,7 +245,7 @@ Respond only with a single JSON object matching the schema. Do not output any su
                 htmlContent.mainText,
                 ...htmlContent.announcements,
                 // Include table data as text
-                ...htmlContent.tables.flatMap(t => 
+                ...htmlContent.tables.flatMap(t =>
                     [t.headers.join(' | '), ...t.rows.map(r => r.join(' | '))]
                 ),
             ].join('\n\n');
@@ -319,10 +319,10 @@ Do not output any surrounding text, only the JSON object.`;
             // Save raw response for debugging/audit
             try {
                 const rawDir = path.join('./storage/pdf-crawls/raw-responses', `${sourceName}_html`);
-                await fs.mkdir(rawDir, { recursive: true }).catch(() => {});
+                await fs.mkdir(rawDir, { recursive: true }).catch(() => { });
                 const stamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
                 const outFile = path.join(rawDir, `${stamp}_${crypto.createHash('sha1').update(content).digest('hex')}.txt`);
-                await fs.writeFile(outFile, content, 'utf8').catch(() => {});
+                await fs.writeFile(outFile, content, 'utf8').catch(() => { });
             } catch (e) {
                 // non-blocking
             }

@@ -8,10 +8,12 @@ import digestRouter from './routes/digest';
 import digestsRouter from './routes/digests';
 import datapointsRouter from './routes/datapoints';
 import extractionRouter from './routes/extraction';
+import documentsRouter from './routes/documents';
 import { initializeDigestScheduler } from './jobs/weekly-digest';
 
 const app: Express = express();
-const port = process.env.PORT ?? 3001;
+const port = Number(process.env.PORT ?? 3001);
+const host = '0.0.0.0';
 
 // Middleware
 app.use(
@@ -25,7 +27,16 @@ app.use(express.json());
 // Setup graceful shutdown
 setupGracefulShutdown();
 
-// Health check
+// Simple ping endpoint (no database)
+app.get('/ping', (_req: Request, res: Response): void => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/v1/ping', (_req: Request, res: Response): void => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Health check endpoints
 app.get('/health', async (_req: Request, res: Response): Promise<void> => {
     const health = await healthCheck();
     res.json({
@@ -35,13 +46,23 @@ app.get('/health', async (_req: Request, res: Response): Promise<void> => {
     });
 });
 
+app.get('/api/v1/health', async (_req: Request, res: Response): Promise<void> => {
+    const health = await healthCheck();
+    res.json({
+        status: health.ok ? 'ok' : 'unhealthy',
+        message: health.message,
+        timestamp: new Date().toISOString(),
+    });
+});
+
 // Mount routes
-app.use('/api/sources', sourcesRouter);
-app.use('/api/crawl', crawlRouter);
-app.use('/api/datapoints', datapointsRouter);
-app.use('/api/digest', digestRouter);
-app.use('/api/digests', digestsRouter); // New digest listing endpoint
-app.use('/api/extraction', extractionRouter);
+app.use('/api/v1/sources', sourcesRouter);
+app.use('/api/v1/crawl', crawlRouter);
+app.use('/api/v1/datapoints', datapointsRouter);
+app.use('/api/v1/digest', digestRouter);
+app.use('/api/v1/digests', digestsRouter);
+app.use('/api/v1/extraction', extractionRouter);
+app.use('/api/v1/documents', documentsRouter);
 
 // Initialize scheduled jobs
 initializeDigestScheduler();
@@ -64,12 +85,14 @@ app.use((err: Error, _req: Request, res: Response, _next: unknown): void => {
     });
 });
 
-app.listen(port, () => {
-    console.log(`✓ API server listening on port ${port}`);
+app.listen(port, host, () => {
+    console.log(`✓ API server listening on ${host}:${port}`);
     console.log(`  Health check: http://localhost:${port}/health`);
-    console.log(`  Sources API: http://localhost:${port}/api/sources`);
-    console.log(`  Crawl API: http://localhost:${port}/api/crawl`);
-    console.log(`  Datapoints API: http://localhost:${port}/api/datapoints`);
+    console.log(`  Health check (API): http://localhost:${port}/api/v1/health`);
+    console.log(`  Sources API: http://localhost:${port}/api/v1/sources`);
+    console.log(`  Crawl API: http://localhost:${port}/api/v1/crawl`);
+    console.log(`  Datapoints API: http://localhost:${port}/api/v1/datapoints`);
+    console.log(`  Digests API: http://localhost:${port}/api/v1/digests`);
 });
 
 export { app };

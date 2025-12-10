@@ -158,8 +158,8 @@ export default function SourcesPage(): JSX.Element {
             render: (source: Source) => (
                 <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${source.active
-                            ? 'bg-green-100 text-green-800 border border-green-200'
-                            : 'bg-gray-100 text-gray-800 border border-gray-200'
+                        ? 'bg-green-100 text-green-800 border border-green-200'
+                        : 'bg-gray-100 text-gray-800 border border-gray-200'
                         }`}
                 >
                     {source.active ? 'Active' : 'Inactive'}
@@ -191,12 +191,12 @@ export default function SourcesPage(): JSX.Element {
     ];
 
     return (
-        <div className="min-h-screen bg-bg-page">
+        <div className="min-h-screen bg-[#FAFAFA]">
             <div className="max-w-7xl mx-auto px-6 py-8">
                 {/* Header */}
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-2">
-                        <h1 className="text-3xl font-bold text-copy">Sources</h1>
+                        <h1 className="text-3xl font-bold text-[#202020]">Sources</h1>
                         <button
                             onClick={() => handleOpenModal()}
                             className="px-4 py-2 bg-copy text-white rounded-md text-sm font-medium hover:bg-opacity-90 transition"
@@ -298,16 +298,19 @@ export default function SourcesPage(): JSX.Element {
                                 onChange={(e) =>
                                     setFormData({
                                         ...formData,
-                                        type: e.target.value as 'policy' | 'regulatory' | 'news' | 'other',
+                                        type: e.target.value as 'policy' | 'exchange' | 'gazette' | 'ifi' | 'portal' | 'news',
                                     })
                                 }
                                 className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-copy focus:border-transparent"
                                 required
                             >
-                                <option value="policy">Policy</option>
-                                <option value="regulatory">Regulatory</option>
-                                <option value="news">News</option>
-                                <option value="other">Other</option>
+                                <option value="">Select type...</option>
+                                <option value="policy">Policy Document</option>
+                                <option value="exchange">Stock Exchange</option>
+                                <option value="gazette">Official Gazette</option>
+                                <option value="ifi">International Finance Institution</option>
+                                <option value="portal">Government Portal</option>
+                                <option value="news">News Source</option>
                             </select>
                         </div>
 

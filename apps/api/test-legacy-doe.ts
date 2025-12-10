@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 
 async function testLegacyDoeErc() {
     console.log('🔍 Testing Legacy DOE ERC page...\n');
-    
+
     const browser = await chromium.launch({
         headless: false,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -22,7 +22,7 @@ async function testLegacyDoeErc() {
 
     try {
         console.log('📍 Navigating to legacy DOE ERC page...');
-        
+
         const response = await page.goto('https://legacy.doe.gov.ph/energy-information-resources?q=electric-power/coe-erc', {
             waitUntil: 'domcontentloaded',
             timeout: 60000,
@@ -35,9 +35,9 @@ async function testLegacyDoeErc() {
 
         // Look for PDF links
         const pdfLinks = await page.$$eval('a[href*=".pdf"], a[href*="PDF"]', (anchors) =>
-            anchors.map(a => ({ 
-                text: (a as HTMLAnchorElement).textContent?.trim().substring(0, 100), 
-                href: (a as HTMLAnchorElement).href 
+            anchors.map(a => ({
+                text: (a as HTMLAnchorElement).textContent?.trim().substring(0, 100),
+                href: (a as HTMLAnchorElement).href
             }))
         );
 
@@ -49,9 +49,9 @@ async function testLegacyDoeErc() {
 
         // Also check for file download links
         const fileLinks = await page.$$eval('a[href*="/files/"], a.file', (anchors) =>
-            anchors.map(a => ({ 
-                text: (a as HTMLAnchorElement).textContent?.trim().substring(0, 100), 
-                href: (a as HTMLAnchorElement).href 
+            anchors.map(a => ({
+                text: (a as HTMLAnchorElement).textContent?.trim().substring(0, 100),
+                href: (a as HTMLAnchorElement).href
             }))
         );
 

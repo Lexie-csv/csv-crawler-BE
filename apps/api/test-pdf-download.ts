@@ -9,7 +9,7 @@ import * as path from 'path';
 
 async function testPdfDownload() {
     console.log('🔍 Testing PDF download from legacy DOE...\n');
-    
+
     const browser = await chromium.launch({
         headless: true,
         args: ['--no-sandbox'],
@@ -24,7 +24,7 @@ async function testPdfDownload() {
 
     try {
         console.log('📍 Navigating to legacy DOE ERC page...');
-        
+
         await page.goto('https://legacy.doe.gov.ph/energy-information-resources?q=electric-power/coe-erc', {
             waitUntil: 'domcontentloaded',
             timeout: 60000,
@@ -48,7 +48,7 @@ async function testPdfDownload() {
 
         // Set up download listener
         const downloadPromise = page.waitForEvent('download');
-        
+
         // Click the PDF link
         console.log('⬇️  Clicking to download...');
         await page.click('a[href*=".pdf"]');
@@ -68,12 +68,12 @@ async function testPdfDownload() {
         // Try to parse PDF
         console.log('\n📖 Parsing PDF...');
         const dataBuffer = await fs.readFile(savePath);
-        
+
         // Use PDFParse from pdf-parse
         const { PDFParse } = await import('pdf-parse');
         const parser = new PDFParse({ data: dataBuffer });
         const textResult = await parser.getText();
-        
+
         console.log(`📄 Pages: ${textResult.pages.length}`);
         console.log(`📝 Text length: ${textResult.text.length} characters`);
         console.log(`\n📋 First 500 characters:\n`);

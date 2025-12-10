@@ -106,12 +106,13 @@ export async function createSource(data: {
     type: string;
     country: string;
     sector?: string | null;
+    extractionPrompt?: string | null;
 }): Promise<Source> {
     const source = await queryOne<Source>(
-        `INSERT INTO sources (name, url, type, country, sector, active, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())
-     RETURNING id, name, url, type, country, sector, active, created_at, updated_at`,
-        [data.name, data.url, data.type, data.country, data.sector ?? null]
+        `INSERT INTO sources (name, url, type, country, sector, extraction_prompt, active, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW())
+     RETURNING id, name, url, type, country, sector, extraction_prompt, active, created_at, updated_at`,
+        [data.name, data.url, data.type, data.country, data.sector ?? null, data.extractionPrompt ?? null]
     );
 
     if (!source) {

@@ -41,7 +41,7 @@ program
 
         try {
             const urls = await getUrls(options);
-            
+
             if (urls.length === 0) {
                 console.error('❌ No URLs provided. Use --url or --file option.');
                 process.exit(1);
@@ -88,9 +88,9 @@ program
 
             // Export
             const formats = options.export.split(',').map((f: string) => f.trim()) as ('csv' | 'json' | 'db')[];
-            
+
             console.log(`💾 Exporting results (${formats.join(', ')})...`);
-            
+
             const exportService = new ExportService(options.output);
             const exportResult = await exportService.exportScanResults(results, {
                 formats,
@@ -165,9 +165,9 @@ program
 
             // Export
             const formats = options.export.split(',').map((f: string) => f.trim()) as ('json' | 'db' | 'md')[];
-            
+
             console.log(`💾 Exporting digest (${formats.join(', ')})...`);
-            
+
             const exportService = new ExportService(options.output);
             const exportResult = await exportService.exportDigest(digest, markdown, {
                 formats: formats.filter(f => f !== 'md') as ('json' | 'db')[],
@@ -229,7 +229,7 @@ program
                 // Export from scan results
                 const formats = options.format.split(',').map((f: string) => f.trim()) as ('csv' | 'json' | 'db')[];
                 const result = await exportService.exportScanResults(data.results, { formats });
-                
+
                 console.log('✅ Export successful!\n');
                 result.files.forEach(file => console.log(`  📄 ${file}`));
             } else {

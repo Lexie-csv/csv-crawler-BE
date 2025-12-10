@@ -24,8 +24,10 @@ import type {
     PdfCrawlResult,
     ExtractedHtmlContent,
 } from '@csv/types';
-// import { HtmlContentExtractor } from './html-content-extractor.js';
+import { HtmlContentExtractor } from './html-content-extractor.js';
 import PdfLlmProcessor from './pdf-llm-processor.service.js';
+import { DocumentChangeDetector } from './document-change-detector.js';
+import { Pool } from 'pg';
 
 export class PdfRpaCrawler {
     private browser: Browser | null = null;
@@ -36,8 +38,12 @@ export class PdfRpaCrawler {
     private extractedDocuments: ExtractedPolicyDocument[] = [];
     private extractedHtmlContent: ExtractedHtmlContent[] = [];
     private errors: Array<{ url: string; error: string; timestamp: Date }> = [];
-    // private htmlExtractor: HtmlContentExtractor;
+    private htmlExtractor: HtmlContentExtractor;
     private llmProcessor: PdfLlmProcessor;
+    private changeDetector: DocumentChangeDetector | null = null;
+    private newDocuments: number = 0;
+    private updatedDocuments: number = 0;
+    private unchangedDocuments: number = 0;
 
     constructor() {
         const apiKey = process.env.OPENAI_API_KEY;
@@ -46,8 +52,18 @@ export class PdfRpaCrawler {
         } else {
             console.warn('[PdfRpaCrawler] OPENAI_API_KEY not set - extraction will be skipped');
         }
-        // this.htmlExtractor = new HtmlContentExtractor();
+        this.htmlExtractor = new HtmlContentExtractor();
         this.llmProcessor = new PdfLlmProcessor();
+
+        // Initialize change detector if database is configured
+        if (process.env.DATABASE_URL) {
+            try {
+                const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+                this.changeDetector = new DocumentChangeDetector(pool);
+            } catch (error) {
+                console.warn('[PdfRpaCrawler] Failed to initialize change detector:', error);
+            }
+        }
     }
 
     /**
@@ -122,7 +138,7 @@ export class PdfRpaCrawler {
                         }
 
                         // Optionally analyze HTML content before finding PDFs
-                        if (config.analyzeHtml && config.htmlConfig) {
+                        if (config.analyzeHtml) {
                             await this.analyzeHtmlPage(page, config);
                         }
 
@@ -155,6 +171,12 @@ export class PdfRpaCrawler {
             console.log(`\n🗂️  Processing downloaded PDFs (text extraction will always run)...`);
             await this.processPdfs(config);
 
+            // Track changes if change detector is available
+            if (this.changeDetector && (this.extractedDocuments.length > 0 || this.extractedHtmlContent.length > 0)) {
+                console.log(`\n🔍 Detecting changes...`);
+                await this.trackChanges(config.name);
+            }
+
             const endTime = new Date();
 
             const result: PdfCrawlResult = {
@@ -166,6 +188,9 @@ export class PdfRpaCrawler {
                 relevantDocuments: this.extractedDocuments.filter(d => d.is_relevant).length,
                 htmlPagesAnalyzed: config.analyzeHtml ? this.extractedHtmlContent.length : undefined,
                 relevantHtmlPages: config.analyzeHtml ? this.extractedHtmlContent.filter(h => h.is_relevant).length : undefined,
+                newDocuments: this.newDocuments,
+                updatedDocuments: this.updatedDocuments,
+                unchangedDocuments: this.unchangedDocuments,
                 errors: this.errors,
                 downloadedPdfs: this.downloadedPdfs,
                 extractedDocuments: this.extractedDocuments,
@@ -178,6 +203,75 @@ export class PdfRpaCrawler {
         } finally {
             await this.closeBrowser();
         }
+    }
+
+    /**
+     * Track changes for all extracted documents
+     */
+    private async trackChanges(sourceName: string): Promise<void> {
+        if (!this.changeDetector) {
+            return;
+        }
+
+        // Get source_id from database
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        let sourceId: string | null = null;
+
+        try {
+            const result = await pool.query(
+                'SELECT id FROM sources WHERE name = $1',
+                [sourceName]
+            );
+
+            if (result.rows.length === 0) {
+                console.log(`   ⚠️  Source "${sourceName}" not found in database. Skipping change detection.`);
+                return;
+            }
+
+            sourceId = result.rows[0].id;
+        } catch (error) {
+            console.error(`   ❌ Failed to lookup source: ${error}`);
+            return;
+        } finally {
+            await pool.end();
+        }
+
+        if (!sourceId) {
+            return;
+        }
+
+        const allDocuments = [
+            ...this.extractedDocuments.map(d => ({ ...d, content_type: 'pdf' })),
+            ...this.extractedHtmlContent.map(h => ({ ...h, content_type: 'html_page' }))
+        ];
+
+        for (const doc of allDocuments) {
+            try {
+                const documentUrl = doc.source_url || '';
+                if (!documentUrl || !doc.title) {
+                    continue; // Skip documents without URL or title
+                }
+
+                const result = await this.changeDetector.processDocument(sourceId, doc);
+
+                if (result.isNew) {
+                    this.newDocuments++;
+                    console.log(`   ✨ NEW: ${doc.title}`);
+                } else if (result.hasChanged) {
+                    this.updatedDocuments++;
+                    console.log(`   🔄 UPDATED: ${doc.title}`);
+                } else {
+                    this.unchangedDocuments++;
+                }
+            } catch (error) {
+                console.error(`   ❌ Failed to track changes for: ${doc.title}`, error instanceof Error ? error.message : String(error));
+            }
+        }
+
+        console.log(`\n📊 Change Summary:`);
+        console.log(`   New documents: ${this.newDocuments}`);
+        console.log(`   Updated documents: ${this.updatedDocuments}`);
+        console.log(`   Unchanged documents: ${this.unchangedDocuments}`);
     }
 
     /**
@@ -259,28 +353,28 @@ export class PdfRpaCrawler {
         page: Page,
         config: PdfSourceConfig
     ): Promise<void> {
-        if (!config.htmlConfig) return;
-
         try {
-            console.log(`   🌐 HTML analysis temporarily disabled`);
-            return;
-            
-            // TODO: Fix HTML extractor TypeScript issues
             // Extract HTML content
-            // const htmlContent = await this.htmlExtractor.extractPageContent(page, config.htmlConfig);
-            
-            // if (!htmlContent) {
-            //     console.log(`   ⏭️  Skipping HTML analysis - content too short or extraction failed`);
-            //     return;
-            // }
+            const htmlContent = await this.htmlExtractor.extract(page);
+
+            if (!htmlContent || htmlContent.mainText.length < 200) {
+                console.log(`   ⏭️  Skipping HTML analysis - content too short`);
+                return;
+            }
+
+            // Quick heuristic check before calling LLM
+            if (!this.htmlExtractor.isLikelyRelevant(htmlContent)) {
+                console.log(`   ⏭️  Skipping HTML analysis - doesn't look like regulatory content`);
+                return;
+            }
 
             // Analyze with LLM
-            // const analyzed = await this.llmProcessor.analyzeHtmlContent(htmlContent, config.name);
-            
-            // if (analyzed) {
-            //     this.extractedHtmlContent.push(analyzed);
-            //     console.log(`   ✅ HTML content analyzed: ${analyzed.title} (relevant=${analyzed.is_relevant})`);
-            // }
+            const analyzed = await this.llmProcessor.analyzeHtmlContent(htmlContent, config.name);
+
+            if (analyzed) {
+                this.extractedHtmlContent.push(analyzed);
+                console.log(`   ✅ HTML content analyzed: ${analyzed.title} (relevant=${analyzed.is_relevant})`);
+            }
         } catch (error) {
             console.error(`   ❌ Error analyzing HTML page:`, error);
         }
@@ -318,7 +412,7 @@ export class PdfRpaCrawler {
         // Limit number of PDFs to download per page to avoid issues
         const maxPdfsPerPage = 10;
         const pdfsToDownload = pdfLinks.slice(0, maxPdfsPerPage);
-        
+
         if (pdfLinks.length > maxPdfsPerPage) {
             console.log(`   ⚠️  Limiting to first ${maxPdfsPerPage} PDFs`);
         }
@@ -398,7 +492,7 @@ export class PdfRpaCrawler {
                         }
 
                         const buffer = await resp.body();
-                        
+
                         // Additional validation: check PDF magic bytes
                         if (buffer.length < 4 || buffer.toString('ascii', 0, 4) !== '%PDF') {
                             console.log(`   ⚠️  Skipping invalid PDF file: ${pdfUrl}`);
@@ -507,7 +601,7 @@ export class PdfRpaCrawler {
                 const parser = new PDFParse({ data: fileBuffer } as any);
                 const textResult = await parser.getText();
                 const text = (textResult && textResult.text) ? textResult.text : '';
-                try { await parser.destroy(); } catch {}
+                try { await parser.destroy(); } catch { }
 
                 console.log(`   📝 Extracted ${text.length} characters`);
 

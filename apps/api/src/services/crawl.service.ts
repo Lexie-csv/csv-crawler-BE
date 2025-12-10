@@ -2,7 +2,7 @@ import { query, queryOne } from '@csv/db';
 import { createCrawler } from './crawler.service';
 import { createMultiPageCrawler } from './multi-page-crawler.service';
 import { digestOrchestrator } from './digest-orchestration.service';
-import { CrawlJob, SourceCrawlConfig } from '@csv/types';
+import { CrawlJob, SourceCrawlConfig, CrawlerConfig } from '@csv/types';
 
 /**
  * Validate that the provided sourceId exists in the database
@@ -300,8 +300,8 @@ async function executeCrawlJob(
         console.log(`[CrawlService] Options:`, JSON.stringify(options, null, 2));
 
         // Get source info
-        const source = await queryOne<{ url: string; name: string; crawl_config: any }>(
-            'SELECT url, name, crawl_config FROM sources WHERE id = $1',
+        const source = await queryOne<{ url: string; name: string; crawler_config: any }>(
+            'SELECT url, name, crawler_config FROM sources WHERE id = $1',
             [sourceId]
         );
 
@@ -313,7 +313,7 @@ async function executeCrawlJob(
         console.log(`[CrawlService] Source details:`, {
             name: source.name,
             url: source.url,
-            hasConfig: !!source.crawl_config
+            hasConfig: !!source.crawler_config
         });
 
         const useMultiPage = options?.useMultiPage ?? false;
@@ -323,19 +323,27 @@ async function executeCrawlJob(
             console.log(`[CrawlService] ✓ Multi-page mode enabled`);
             console.log(`[CrawlService] Starting MULTI-PAGE crawl for job ${jobId}, source ${sourceId}`);
 
+            // Parse source-specific crawler config from database
+            const sourceConfig: CrawlerConfig | null = source.crawler_config || null;
+
+            if (sourceConfig) {
+                console.log(`[CrawlService] Using source-specific config:`, sourceConfig);
+            } else {
+                console.log(`[CrawlService] No source-specific config, using defaults`);
+            }
+
             const config: SourceCrawlConfig = {
                 baseUrl: source.url,
                 maxDepth: options?.maxDepth ?? 2,
                 maxPages: options?.maxPages ?? 50,
                 concurrency: options?.concurrency ?? 3,
-                ...(source.crawl_config || {}),
             };
 
             console.log(`[CrawlService] Crawl config:`, JSON.stringify(config, null, 2));
 
-            const multiPageCrawler = createMultiPageCrawler(config);
+            const multiPageCrawler = createMultiPageCrawler(config, sourceConfig);
             const stats = await multiPageCrawler.crawlSource(sourceId, jobId);
-            
+
             console.log(`[CrawlService] ✓ Multi-page crawl completed for job ${jobId}`);
             console.log(`[CrawlService] Stats:`, JSON.stringify(stats, null, 2));
 
@@ -366,7 +374,7 @@ async function executeCrawlJob(
         console.log(`[CrawlService] Source ID: ${sourceId}`);
 
         const digest = await digestOrchestrator.processAndGenerateDigest(jobId, sourceId);
-        
+
         if (digest) {
             console.log(`[CrawlService] ✓✓✓ Digest generated successfully ✓✓✓`);
             console.log(`[CrawlService] Digest ID: ${digest.id}`);
@@ -382,7 +390,7 @@ async function executeCrawlJob(
     } catch (error) {
         console.error(`[CrawlService] ❌ Crawl failed for job ${jobId}:`, error);
         console.error(`[CrawlService] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
-        
+
         // Update job with error
         await updateCrawlJob(jobId, {
             status: 'failed',

@@ -41,7 +41,7 @@ async function viewScanResults() {
 
     // Find latest scan results
     const scanFile = await findLatestFile('./storage/exports', 'scan_results');
-    
+
     if (!scanFile) {
         console.log('❌ No scan results found.');
         console.log('\nRun a scan first:');
@@ -78,29 +78,29 @@ async function viewScanResults() {
             console.log(`   URL: ${result.url}`);
             console.log(`   Relevance Score: ${result.relevanceScore}/100`);
             console.log(`   Why relevant: ${result.relevanceReason}`);
-            
+
             if (result.signals && result.signals.length > 0) {
                 console.log(`\n   📋 Found ${result.signals.length} signal(s):`);
-                
+
                 for (const signal of result.signals) {
                     console.log(`\n   • Type: ${signal.type.toUpperCase()}`);
                     console.log(`     Title: ${signal.title}`);
                     console.log(`     Description: ${signal.description}`);
-                    
+
                     if (signal.effectiveDate) {
                         console.log(`     Effective Date: ${new Date(signal.effectiveDate).toLocaleDateString()}`);
                     }
-                    
+
                     if (signal.impactedParties && signal.impactedParties.length > 0) {
                         console.log(`     Who's affected: ${signal.impactedParties.join(', ')}`);
                     }
-                    
+
                     console.log(`     Confidence: ${Math.round(signal.confidence * 100)}%`);
                 }
             } else {
                 console.log(`   ℹ️  No specific signals extracted yet`);
             }
-            
+
             console.log('');
         }
     }
@@ -137,7 +137,7 @@ async function viewDigest() {
 
     // Find latest digest markdown
     const digestFile = await findLatestFile('./storage/exports', 'digest_');
-    
+
     if (!digestFile || !digestFile.endsWith('.md')) {
         console.log('❌ No digest found.');
         console.log('\nGenerate a digest first:');
@@ -148,7 +148,7 @@ async function viewDigest() {
     console.log(`📁 Reading: ${path.basename(digestFile)}\n`);
 
     const content = await fs.readFile(digestFile, 'utf8');
-    
+
     // Just print the markdown content - it's already formatted for reading
     console.log(content);
     console.log('\n');
@@ -161,7 +161,7 @@ async function listAllExports() {
 
     try {
         const files = await fs.readdir('./storage/exports');
-        
+
         if (files.length === 0) {
             console.log('No exports found yet.\n');
             return;
@@ -175,9 +175,9 @@ async function listAllExports() {
                     name: f,
                     size: stat.size,
                     time: stat.mtime,
-                    type: f.includes('scan_results') ? '📊 Scan' : 
-                          f.includes('digest') ? '📄 Digest' :
-                          f.includes('datapoints') ? '📈 Data' : '📁 Other'
+                    type: f.includes('scan_results') ? '📊 Scan' :
+                        f.includes('digest') ? '📄 Digest' :
+                            f.includes('datapoints') ? '📈 Data' : '📁 Other'
                 };
             })
         );
@@ -207,7 +207,7 @@ async function exportToCSV() {
 
     // Find latest scan results
     const scanFile = await findLatestFile('./storage/exports', 'scan_results');
-    
+
     if (!scanFile) {
         console.log('❌ No scan results found.');
         console.log('\nRun a scan first:');
@@ -240,7 +240,7 @@ async function exportToCSV() {
 
     // Also create signals CSV
     let signalsCsv = 'URL,Title,Signal Type,Signal Title,Description,Effective Date,Affected Parties,Confidence\n';
-    
+
     for (const result of data.results) {
         if (result.signals && result.signals.length > 0) {
             for (const signal of result.signals) {
@@ -281,32 +281,32 @@ async function viewHelp() {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📖 VIEWER HELP');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    
+
     console.log('View your scan results in plain English:\n');
-    
+
     console.log('Commands:');
     console.log('  pnpm view scan     - View latest scan results with details');
     console.log('  pnpm view digest   - View latest executive digest');
     console.log('  pnpm view list     - List all exported files');
     console.log('  pnpm view csv      - Export latest results to CSV (Excel-ready)');
     console.log('  pnpm view help     - Show this help\n');
-    
+
     console.log('Examples:');
     console.log('  1. Run a scan:');
     console.log('     pnpm scanner scan --file example-urls.txt\n');
-    
+
     console.log('  2. View the results:');
     console.log('     pnpm view scan\n');
-    
+
     console.log('  3. Export to Excel:');
     console.log('     pnpm view csv\n');
-    
+
     console.log('  4. Generate a digest:');
     console.log('     pnpm scanner digest --input storage/exports/scan_results_*.json\n');
-    
+
     console.log('  5. Read the digest:');
     console.log('     pnpm view digest\n');
-    
+
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }
 

@@ -1,19 +1,34 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { 
-    DocumentClassification, 
-    ExtractionResult, 
+import {
+    DocumentClassification,
+    ExtractionResult,
     DigestDatapoint,
-    DigestHighlight 
+    DigestHighlight
 } from '@csv/types';
 
-// Zod schemas for validation
-const ClassificationSchema = z.object({
-    isRelevant: z.boolean(),
-    category: z.enum(['circular', 'ppa', 'price_change', 'energy_mix', 'policy', 'other', 'irrelevant']),
-    confidence: z.number().min(0).max(1),
-    reasoning: z.string().optional(),
-});
+/**
+ * Create a dynamic classification schema based on source type
+ */
+function createClassificationSchema(sourceType?: string): z.ZodSchema {
+    // For news sources, use flexible categories
+    if (sourceType === 'news') {
+        return z.object({
+            isRelevant: z.boolean(),
+            category: z.string(), // Accept any string for news
+            confidence: z.number().min(0).max(1),
+            reasoning: z.string().optional(),
+        });
+    }
+
+    // For policy sources (DOE, BSP, etc.), use strict categories
+    return z.object({
+        isRelevant: z.boolean(),
+        category: z.enum(['circular', 'ppa', 'price_change', 'energy_mix', 'policy', 'regulation', 'announcement', 'data_report', 'other', 'irrelevant']),
+        confidence: z.number().min(0).max(1),
+        reasoning: z.string().optional(),
+    });
+}
 
 const EventSchema = z.object({
     title: z.string(),
@@ -57,7 +72,7 @@ export class LLMExtractionService {
     constructor() {
         this.apiKey = process.env.OPENAI_API_KEY || null;
         this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-        
+
         // Only initialize OpenAI client when actually needed
         if (this.apiKey) {
             this.openai = new OpenAI({ apiKey: this.apiKey });
@@ -72,11 +87,32 @@ export class LLMExtractionService {
 
     /**
      * NODE 1: Classify document relevance
+     * @param document - The document to classify
+     * @param customPrompt - Optional custom extraction prompt from source configuration
+     * @param sourceType - Source type (e.g., 'news', 'policy') for schema selection
      */
-    async classifyRelevance(document: Document): Promise<DocumentClassification> {
+    async classifyRelevance(document: Document, customPrompt?: string, sourceType?: string): Promise<DocumentClassification> {
         this.ensureInitialized();
-        
-        const prompt = `Analyze this document and determine if it contains important regulatory, policy, or financial information.
+
+        // Create dynamic schema based on source type
+        const ClassificationSchema = createClassificationSchema(sourceType);
+
+        // Use custom prompt if provided, otherwise use default
+        const prompt = customPrompt ?
+            `${customPrompt}
+
+Document Title: ${document.title}
+Document URL: ${document.url}
+Content: ${document.content.substring(0, 3000)}
+
+Respond in JSON format with:
+{
+  "isRelevant": boolean,
+  "category": "circular" | "regulation" | "announcement" | "data_report" | "policy" | "other" | "irrelevant",
+  "confidence": number (0-1),
+  "reasoning": string (brief explanation)
+}` :
+            `Analyze this document and determine if it contains important regulatory, policy, or financial information.
 
 **HIGH PRIORITY - ALWAYS MARK AS RELEVANT:**
 - Interest rate announcements or updates (overnight policy rate, key policy rate, lending rates, deposit rates, BSP reference rates)
@@ -119,13 +155,17 @@ Respond in JSON format with:
   "reasoning": string (brief explanation)
 }`;
 
+        const systemMessage = customPrompt ?
+            'You are an expert policy analyst. Extract relevant information according to the provided instructions.' :
+            'You are an expert analyst focused on Philippine central bank (BSP) policy monitoring. Your PRIMARY GOAL is to identify interest rate updates and regulatory circulars. Be AGGRESSIVE in marking documents as relevant if they contain ANY links or references to circulars, press releases, or rate announcements.';
+
         try {
             const completion = await this.openai!.chat.completions.create({
                 model: this.model,
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are an expert analyst focused on Philippine central bank (BSP) policy monitoring. Your PRIMARY GOAL is to identify interest rate updates and regulatory circulars. Be AGGRESSIVE in marking documents as relevant if they contain ANY links or references to circulars, press releases, or rate announcements.',
+                        content: systemMessage,
                     },
                     {
                         role: 'user',
@@ -142,7 +182,7 @@ Respond in JSON format with:
             }
 
             const parsed = JSON.parse(responseContent);
-            const validated = ClassificationSchema.parse(parsed);
+            const validated = ClassificationSchema.parse(parsed) as DocumentClassification;
 
             console.log(`[LLM] Classification for ${document.id}:`, validated);
             return validated;
@@ -161,17 +201,13 @@ Respond in JSON format with:
 
     /**
      * NODE 2: Extract events and datapoints from relevant documents
+     * @param document - The document to extract from
+     * @param customPrompt - Optional custom extraction prompt from source configuration
      */
-    async extractEventsAndDatapoints(document: Document): Promise<ExtractionResult> {
+    async extractEventsAndDatapoints(document: Document, customPrompt?: string): Promise<ExtractionResult> {
         this.ensureInitialized();
-        
-        const prompt = `Extract structured information from this regulatory/policy document:
 
-Document Title: ${document.title}
-Document URL: ${document.url}
-Content: ${document.content.substring(0, 5000)}
-
-Extract:
+        const baseExtractionGuidelines = customPrompt || `Extract:
 1. **Events/Updates**: New circulars, policy announcements, regulatory changes, advisories
 2. **Datapoints**: Specific numeric values (rates, percentages, amounts, dates, statistics)
 
@@ -183,7 +219,15 @@ For each datapoint, assign an appropriate indicatorCode like:
 - "RESERVE_REQ" (for reserve requirements)
 - "POLICY_RATE" (for policy interest rates)
 - "GDP_GROWTH" (for GDP statistics)
-- Or any relevant indicator based on the content
+- Or any relevant indicator based on the content`;
+
+        const prompt = `Extract structured information from this regulatory/policy document:
+
+Document Title: ${document.title}
+Document URL: ${document.url}
+Content: ${document.content.substring(0, 5000)}
+
+${baseExtractionGuidelines}
 
 Respond in JSON format with:
 {
@@ -212,13 +256,17 @@ Respond in JSON format with:
   "confidence": number (0-1, overall extraction confidence)
 }`;
 
+        const systemMessage = customPrompt ?
+            'You are an expert data extractor for policy documents. Follow the extraction guidelines provided in the prompt precisely.' :
+            'You are an expert data extractor for Philippine and Southeast Asian energy policy documents. Extract structured data precisely and completely.';
+
         try {
             const completion = await this.openai!.chat.completions.create({
                 model: this.model,
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are an expert data extractor for Philippine and Southeast Asian energy policy documents. Extract structured data precisely and completely.',
+                        content: systemMessage,
                     },
                     {
                         role: 'user',
@@ -262,7 +310,7 @@ Respond in JSON format with:
         periodEnd: string
     ): Promise<string> {
         this.ensureInitialized();
-        const highlightsSummary = highlights.map((h, i) => 
+        const highlightsSummary = highlights.map((h, i) =>
             `${i + 1}. **${h.title}** (${h.category})\n   ${h.summary}\n   Source: ${h.sourceUrl}`
         ).join('\n\n');
 

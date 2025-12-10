@@ -119,7 +119,7 @@ export class PolicyScanner {
 
             // Extract clean text
             const extractedText = this.extractText(content);
-            
+
             // Generate content hash
             const contentHash = this.hashContent(extractedText);
 
@@ -178,13 +178,13 @@ export class PolicyScanner {
         waitForSelectors: string[]
     ): Promise<{ content: string; title: string; hasJavaScript: boolean }> {
         await this.initBrowser();
-        
+
         const page: Page = await this.browser!.newPage();
-        
+
         try {
             // Set realistic viewport
             await page.setViewportSize({ width: 1920, height: 1080 });
-            
+
             // Set realistic user agent
             await page.setExtraHTTPHeaders({
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -219,7 +219,7 @@ export class PolicyScanner {
             if (response && !response.ok()) {
                 const status = response.status();
                 let title = `Error ${status}`;
-                
+
                 if (status === 404) {
                     title = 'Page not found';
                 } else if (status === 403) {
@@ -283,7 +283,7 @@ export class PolicyScanner {
         }
 
         const content = await response.text();
-        
+
         // Extract title from HTML
         const $ = cheerio.load(content);
         const title = $('title').text().trim() || $('h1').first().text().trim() || 'Untitled';
@@ -296,10 +296,10 @@ export class PolicyScanner {
      */
     private extractText(html: string): string {
         const $ = cheerio.load(html);
-        
+
         // Remove script, style, nav, footer
         $('script, style, nav, footer, header, .menu, .sidebar').remove();
-        
+
         // Get text from main content areas
         const mainSelectors = [
             'main',
@@ -349,7 +349,7 @@ export class PolicyScanner {
 
         try {
             const prompt = this.buildRelevancePrompt(url, title, content);
-            
+
             const response = await this.openai.chat.completions.create({
                 model: process.env.LLM_MODEL || 'gpt-4o-mini',
                 messages: [
@@ -367,11 +367,11 @@ export class PolicyScanner {
             });
 
             const result = response.choices[0]?.message?.content || '';
-            
+
             // Parse response
             const scoreMatch = result.match(/SCORE:\s*(\d+)/i);
             const reasonMatch = result.match(/REASON:\s*(.+?)(?:\n|$)/is);
-            
+
             const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 50;
             const reason = reasonMatch ? reasonMatch[1].trim() : 'Unable to determine relevance';
             const isRelevant = score >= 70;
@@ -388,7 +388,7 @@ export class PolicyScanner {
      */
     private buildRelevancePrompt(url: string, title: string, content: string): string {
         const contentSample = content.substring(0, 3000);
-        
+
         return `Analyze this web page for policy/regulatory/market signal relevance.
 
 URL: ${url}
@@ -426,7 +426,7 @@ REASON: [1-2 sentences explaining why]`;
         content: string
     ): { isRelevant: boolean; score: number; reason: string } {
         const text = `${title} ${content}`.toLowerCase();
-        
+
         // High-value keywords
         const highValueKeywords = [
             'circular', 'memorandum', 'advisory', 'guideline', 'regulation',
@@ -506,7 +506,7 @@ REASON: [1-2 sentences explaining why]`;
      */
     private buildSignalExtractionPrompt(title: string, content: string): string {
         const contentSample = content.substring(0, 4000);
-        
+
         return `Extract policy signals from this document.
 
 TITLE: ${title}

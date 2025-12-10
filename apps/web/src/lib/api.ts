@@ -3,7 +3,8 @@
  * Provides typed fetch wrappers for backend endpoints
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URL to go through Next.js proxy
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 interface FetchOptions extends RequestInit {
     params?: Record<string, string | number | boolean>;
@@ -49,7 +50,7 @@ export interface Source {
     id: string;
     name: string;
     url: string;
-    type: 'policy' | 'regulatory' | 'news' | 'other';
+    type: 'policy' | 'exchange' | 'gazette' | 'ifi' | 'portal' | 'news';
     country: string;
     sector: string | null;
     active: boolean;
@@ -60,7 +61,7 @@ export interface Source {
 export interface CreateSourceInput {
     name: string;
     url: string;
-    type: 'policy' | 'regulatory' | 'news' | 'other';
+    type: 'policy' | 'exchange' | 'gazette' | 'ifi' | 'portal' | 'news';
     country: string;
     sector?: string | null;
     active?: boolean;
@@ -82,17 +83,17 @@ interface PaginatedResponse<T> extends ApiResponse<T[]> {
 
 export const sourcesApi = {
     list: async () => {
-        const response = await apiFetch<PaginatedResponse<Source>>('/api/sources');
+        const response = await apiFetch<PaginatedResponse<Source>>('/sources');
         return response.data;
     },
 
     getById: async (id: string) => {
-        const response = await apiFetch<ApiResponse<Source>>(`/api/sources/${id}`);
+        const response = await apiFetch<ApiResponse<Source>>(`/sources/${id}`);
         return response.data;
     },
 
     create: async (data: CreateSourceInput) => {
-        const response = await apiFetch<ApiResponse<Source>>('/api/sources', {
+        const response = await apiFetch<ApiResponse<Source>>('/sources', {
             method: 'POST',
             body: JSON.stringify(data),
         });
@@ -100,7 +101,7 @@ export const sourcesApi = {
     },
 
     update: async (id: string, data: UpdateSourceInput) => {
-        const response = await apiFetch<ApiResponse<Source>>(`/api/sources/${id}`, {
+        const response = await apiFetch<ApiResponse<Source>>(`/sources/${id}`, {
             method: 'PUT',
             body: JSON.stringify(data),
         });
@@ -108,7 +109,7 @@ export const sourcesApi = {
     },
 
     delete: (id: string) =>
-        apiFetch<void>(`/api/sources/${id}`, {
+        apiFetch<void>(`/sources/${id}`, {
             method: 'DELETE',
         }),
 };
@@ -158,6 +159,8 @@ export interface CrawlDigest {
         category: string;
         documentId: string;
         effectiveDate?: string;
+        sourceUrl?: string;
+        metadata?: Record<string, any>;
     }>;
     datapoints: Array<{
         indicatorCode: string;
@@ -185,17 +188,17 @@ export interface UpdateCrawlJobInput {
 
 export const crawlApi = {
     listJobs: async (params?: { status?: string; source_id?: string }) => {
-        const response = await apiFetch<PaginatedResponse<CrawlJob>>('/api/crawl/jobs', { params });
+        const response = await apiFetch<PaginatedResponse<CrawlJob>>('/crawl/jobs', { params });
         return response.data;
     },
 
     getJob: async (id: string) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>(`/api/crawl/jobs/${id}`);
+        const response = await apiFetch<ApiResponse<CrawlJob>>(`/crawl/jobs/${id}`);
         return response.data;
     },
 
     createJob: async (data: CreateCrawlJobInput) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>('/api/crawl/start', {
+        const response = await apiFetch<ApiResponse<CrawlJob>>('/crawl/start', {
             method: 'POST',
             body: JSON.stringify(data),
         });
@@ -203,7 +206,7 @@ export const crawlApi = {
     },
 
     updateJob: async (id: string, data: UpdateCrawlJobInput) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>(`/api/crawl/jobs/${id}`, {
+        const response = await apiFetch<ApiResponse<CrawlJob>>(`/crawl/jobs/${id}`, {
             method: 'PUT',
             body: JSON.stringify(data),
         });
@@ -211,7 +214,7 @@ export const crawlApi = {
     },
 
     getDigest: async (jobId: string) => {
-        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/api/crawl/${jobId}/digest`);
+        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/crawl/${jobId}/digest`);
         return response.data;
     },
 };
@@ -228,12 +231,12 @@ export const digestsApi = {
             pageSize: number;
             totalItems: number;
             totalPages: number;
-        }>('/api/digests', { params });
+        }>('/digests', { params });
         return response;
     },
 
     getById: async (id: string) => {
-        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/api/digests/${id}`);
+        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/digests/${id}`);
         return response.data;
     },
 };
@@ -247,21 +250,50 @@ export interface Document {
     source_id: string;
     crawl_job_id: string;
     url: string;
-    title: string | null;
-    content_text: string | null;
-    content_html: string | null;
+    title: string;
+    content: string;
     content_hash: string;
-    published_at: string | null;
+    image_url?: string | null;
+    classification: string;
+    confidence_score?: number;
     extracted: boolean;
+    is_alert: boolean; // TRUE for policy documents, FALSE for news
+    crawled_at: string;
     created_at: string;
     updated_at: string;
+    source_name?: string;
+    source_type?: string;
+}
+
+export interface DocumentsListParams {
+    limit?: number;
+    days?: number;
+    type?: string;
+    source_id?: string;
+    offset?: number;
+    is_alert?: boolean; // Filter by alert status
+}
+
+export interface DocumentsListResponse {
+    data: Document[];
+    total: number;
+    limit: number;
+    offset: number;
+    timestamp: string;
 }
 
 export const documentsApi = {
-    list: (params?: { source_id?: string; crawl_job_id?: string; extracted?: boolean }) =>
-        apiFetch<Document[]>('/api/documents', { params }),
+    list: async (params?: DocumentsListParams): Promise<DocumentsListResponse> => {
+        const response = await apiFetch<DocumentsListResponse>('/documents', {
+            params: params as Record<string, string | number | boolean>
+        });
+        return response;
+    },
 
-    getById: (id: string) => apiFetch<Document>(`/api/documents/${id}`),
+    getById: async (id: string): Promise<Document> => {
+        const response = await apiFetch<ApiResponse<Document>>(`/documents/${id}`);
+        return response.data;
+    },
 };
 
 // ===========================
@@ -289,9 +321,9 @@ export const datapointsApi = {
         subcategory?: string;
         start_date?: string;
         end_date?: string;
-    }) => apiFetch<Datapoint[]>('/api/datapoints', { params }),
+    }) => apiFetch<Datapoint[]>('/datapoints', { params }),
 
-    getById: (id: string) => apiFetch<Datapoint>(`/api/datapoints/${id}`),
+    getById: (id: string) => apiFetch<Datapoint>(`/datapoints/${id}`),
 };
 
 // ===========================

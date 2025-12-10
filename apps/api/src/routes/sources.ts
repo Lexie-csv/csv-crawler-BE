@@ -93,6 +93,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             type: req.body.type as string,
             country: req.body.country as string,
             sector: req.body.sector as string | null | undefined,
+            extractionPrompt: req.body.extractionPrompt as string | null | undefined,
         });
 
         res.status(201).json({

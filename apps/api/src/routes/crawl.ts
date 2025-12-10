@@ -33,7 +33,9 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
             maxDepth: req.body.maxDepth ? parseInt(req.body.maxDepth, 10) : undefined,
             maxPages: req.body.maxPages ? parseInt(req.body.maxPages, 10) : undefined,
             concurrency: req.body.concurrency ? parseInt(req.body.concurrency, 10) : undefined,
-            useMultiPage: req.body.useMultiPage === true || req.body.useMultiPage === 'true',
+            useMultiPage: req.body.useMultiPage === true ||
+                req.body.useMultiPage === 'true' ||
+                req.body.crawlType === 'multi-page',  // Support crawlType parameter
         };
 
         const job = await createCrawlJob(validation.data!.sourceId, options);

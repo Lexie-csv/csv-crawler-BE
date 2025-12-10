@@ -50,6 +50,7 @@ const SOURCE_CONFIGS: Record<string, PdfSourceConfig> = {
         ],
         scrollToBottom: true,
         headless: true,
+        analyzeHtml: true,  // Enable HTML extraction
     },
     'DOE-legacy-ERC': {
         name: 'DOE-legacy-ERC',
@@ -64,6 +65,7 @@ const SOURCE_CONFIGS: Record<string, PdfSourceConfig> = {
         ],
         scrollToBottom: true,
         headless: true,
+        analyzeHtml: true,  // Enable HTML extraction
     },
     'DOE-circulars': {
         name: 'DOE-circulars',
@@ -80,6 +82,22 @@ const SOURCE_CONFIGS: Record<string, PdfSourceConfig> = {
         ],
         scrollToBottom: true,
         headless: true,
+        analyzeHtml: true,  // Enable HTML extraction
+    },
+    'DOE-circulars-test': {
+        name: 'DOE-circulars-test',
+        startUrl: 'https://legacy.doe.gov.ph/?q=laws-and-issuances/department-circular',
+        domainAllowlist: ['legacy.doe.gov.ph', 'doe.gov.ph'],
+        downloadDir: './storage/downloads/doe-circulars-test',
+        maxDepth: 0,  // Only crawl the start page
+        maxPages: 1,   // Only 1 page
+        pdfLinkSelectorHints: [
+            'a[href$=".pdf"]',
+            'a[href$=".PDF"]',
+        ],
+        scrollToBottom: true,
+        headless: true,
+        analyzeHtml: true,  // Enable HTML extraction
     },
 };
 
@@ -151,6 +169,12 @@ program
                 console.log(`HTML pages analyzed: ${result.htmlPagesAnalyzed}`);
                 console.log(`Relevant HTML pages: ${result.relevantHtmlPages}`);
             }
+            if (result.newDocuments !== undefined || result.updatedDocuments !== undefined) {
+                console.log(`\n📊 CHANGE DETECTION:`);
+                console.log(`New documents:       ${result.newDocuments || 0}`);
+                console.log(`Updated documents:   ${result.updatedDocuments || 0}`);
+                console.log(`Unchanged documents: ${result.unchangedDocuments || 0}`);
+            }
             console.log(`Errors:              ${result.errors.length}`);
             console.log(`Duration:            ${Math.round((result.completedAt.getTime() - result.startedAt.getTime()) / 1000)}s`);
 
@@ -168,10 +192,10 @@ program
             // Save results to JSON
             const resultsDir = './storage/pdf-crawls';
             await fsp.mkdir(resultsDir, { recursive: true });
-            
+
             const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
             const resultsPath = path.join(resultsDir, `${sourceName}_${timestamp}.json`);
-            
+
             await fsp.writeFile(resultsPath, JSON.stringify(result, null, 2), 'utf8');
 
             console.log(`\n💾 Results saved to: ${resultsPath}`);
@@ -199,6 +223,15 @@ program
             console.log(`   Max depth: ${config.maxDepth}`);
             console.log(`   Download dir: ${config.downloadDir}\n`);
         });
+
+        console.log(`\n📋 Available commands:\n`);
+        console.log(`   crawl           - Crawl and extract documents`);
+        console.log(`   reprocess       - Reprocess failed extractions`);
+        console.log(`   export-csv      - Export to CSV`);
+        console.log(`   digest          - Generate briefing digest`);
+        console.log(`   changes         - View document changes`);
+        console.log(`   versions        - View version history`);
+        console.log(`   view-results    - View last crawl results\n`);
     });
 
 program
@@ -207,7 +240,7 @@ program
     .requiredOption('-s, --source <name>', 'Source name')
     .action(async (options) => {
         const resultsDir = './storage/pdf-crawls';
-        
+
         try {
             const files = await fsp.readdir(resultsDir);
             const sourceFiles = files
@@ -249,34 +282,34 @@ program
         }
     });
 
-    // Top-level 'process' command: process downloaded PDFs and optionally run LLM extraction
-    program
-        .command('process')
-        .description('Process already-downloaded PDFs and run LLM extraction')
-        .requiredOption('-s, --source <name>', 'Source name (DOE-main, DOE-legacy-ERC)')
-        .option('--use-llm', 'Use OpenAI LLM for extraction', false)
-        .action(async (options) => {
-            const sourceName = options.source;
+// Top-level 'process' command: process downloaded PDFs and optionally run LLM extraction
+program
+    .command('process')
+    .description('Process already-downloaded PDFs and run LLM extraction')
+    .requiredOption('-s, --source <name>', 'Source name (DOE-main, DOE-legacy-ERC)')
+    .option('--use-llm', 'Use OpenAI LLM for extraction', false)
+    .action(async (options) => {
+        const sourceName = options.source;
 
-            if (!SOURCE_CONFIGS[sourceName]) {
-                console.error(`❌ Unknown source: ${sourceName}`);
-                process.exit(1);
-            }
+        if (!SOURCE_CONFIGS[sourceName]) {
+            console.error(`❌ Unknown source: ${sourceName}`);
+            process.exit(1);
+        }
 
-            const config = { ...SOURCE_CONFIGS[sourceName] };
-            const useLlm = !!options.useLlm;
+        const config = { ...SOURCE_CONFIGS[sourceName] };
+        const useLlm = !!options.useLlm;
 
-            console.log(`\nProcessing downloaded PDFs for: ${sourceName} (useLLM=${useLlm})`);
+        console.log(`\nProcessing downloaded PDFs for: ${sourceName} (useLLM=${useLlm})`);
 
-            const processor = new PdfLlmProcessor();
-            try {
-                const extracted = await processor.processDownloads(config, useLlm);
-                console.log(`\nProcessed ${extracted.length} documents.`);
-            } catch (err) {
-                console.error('❌ Processing failed:', err);
-                process.exit(1);
-            }
-        });
+        const processor = new PdfLlmProcessor();
+        try {
+            const extracted = await processor.processDownloads(config, useLlm);
+            console.log(`\nProcessed ${extracted.length} documents.`);
+        } catch (err) {
+            console.error('❌ Processing failed:', err);
+            process.exit(1);
+        }
+    });
 
 // Top-level reprocess-failed: Re-run LLM extraction only for entries marked Not processed yet
 program
@@ -308,7 +341,7 @@ program
 
         const content = await fsp.readFile(latestPath, 'utf8');
         const arr = JSON.parse(content) as any[];
-    const toRetry = arr.filter(d => d.reason === 'Not processed yet' || d.reason === 'LLM failed' || !d.summary || d.summary === null);
+        const toRetry = arr.filter(d => d.reason === 'Not processed yet' || d.reason === 'LLM failed' || !d.summary || d.summary === null);
 
         if (toRetry.length === 0) {
             console.log('No entries to reprocess.');
@@ -339,7 +372,7 @@ program
                 const parser = new PDFParse({ data: buf } as any);
                 const textResult = await parser.getText();
                 const text = (textResult && textResult.text) ? textResult.text : '';
-                try { await parser.destroy(); } catch {}
+                try { await parser.destroy(); } catch { }
 
                 try {
                     const parsedResult = await (processor as any).processText(text, doc.source_url || '', sourceName);
@@ -363,7 +396,7 @@ program
             }
         }
 
-        const outPath = path.join(resultsDir, `${sourceName}_reprocessed_${new Date().toISOString().replace(/:/g,'-').replace(/\..+/, '')}.json`);
+        const outPath = path.join(resultsDir, `${sourceName}_reprocessed_${new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '')}.json`);
         await fsp.writeFile(outPath, JSON.stringify(results, null, 2), 'utf8');
         console.log(`\n💾 Reprocessed results saved: ${outPath}`);
     });
@@ -371,7 +404,7 @@ program
 // Top-level export-csv: export latest reprocessed JSON -> CSV
 program
     .command('export-csv')
-    .description('Export latest reprocessed JSON for a source to CSV')
+    .description('Export latest reprocessed JSON for a source to CSV (includes PDF and HTML content)')
     .requiredOption('-s, --source <name>', 'Source name (e.g., DOE-legacy-ERC, DOE-circulars_ocr)')
     .option('--all', 'Export all records including non-relevant ones', false)
     .action(async (options) => {
@@ -379,30 +412,80 @@ program
 
         const resultsDir = './storage/pdf-crawls';
         const outDir = './storage/exports';
-        await fsp.mkdir(outDir, { recursive: true }).catch(() => {});
+        await fsp.mkdir(outDir, { recursive: true }).catch(() => { });
 
         const files = await fsp.readdir(resultsDir).catch(() => []);
+
+        // Find reprocessed files (PDF OCR data)
         const reprocessedFiles = files
             .filter((f: string) => f.startsWith(sourceName.replace(/_ocr$/, '')) && f.includes('reprocessed') && f.endsWith('.json'))
             .sort()
             .reverse();
 
-        if (reprocessedFiles.length === 0) {
-            console.log('❌ No reprocessed files found for source');
+        // Find crawl result files (may contain HTML data)
+        const crawlResultFiles = files
+            .filter((f: string) => f.startsWith(sourceName.replace(/_ocr$/, '')) && !f.includes('reprocessed') && !f.includes('extracted') && f.endsWith('.json'))
+            .sort()
+            .reverse();
+
+        let pdfDocuments: any[] = [];
+        let htmlDocuments: any[] = [];
+
+        // Load PDF documents from reprocessed files
+        if (reprocessedFiles.length > 0) {
+            const latest = reprocessedFiles[0];
+            const latestPath = path.join(resultsDir, latest);
+            console.log(`Loading PDF data: ${latestPath}`);
+            const content = await fsp.readFile(latestPath, 'utf8');
+            const data = JSON.parse(content);
+            pdfDocuments = Array.isArray(data) ? data : (data.results || []);
+        }
+
+        // Load HTML documents from crawl result files
+        if (crawlResultFiles.length > 0) {
+            const latest = crawlResultFiles[0];
+            const latestPath = path.join(resultsDir, latest);
+            console.log(`Loading HTML data: ${latestPath}`);
+            try {
+                const content = await fsp.readFile(latestPath, 'utf8');
+                const crawlResult = JSON.parse(content);
+                if (crawlResult.extractedHtmlContent && Array.isArray(crawlResult.extractedHtmlContent)) {
+                    htmlDocuments = crawlResult.extractedHtmlContent;
+                    console.log(`  Found ${htmlDocuments.length} HTML documents`);
+                }
+            } catch (e) {
+                console.log(`  No HTML content found in crawl results`);
+            }
+        }
+
+        // Combine PDF and HTML documents
+        const allDocuments = [...pdfDocuments, ...htmlDocuments];
+
+        // Deduplicate based on title (case-insensitive)
+        const seen = new Map<string, any>();
+        const deduplicatedDocuments = allDocuments.filter(d => {
+            const normalizedTitle = (d.title || '').toLowerCase().trim();
+            if (!normalizedTitle || seen.has(normalizedTitle)) {
+                return false;
+            }
+            seen.set(normalizedTitle, d);
+            return true;
+        });
+
+        if (deduplicatedDocuments.length === 0) {
+            console.log('❌ No documents found for source');
             return;
         }
 
-        const latest = reprocessedFiles[0];
-        const latestPath = path.join(resultsDir, latest);
-        console.log(`Loading: ${latestPath}`);
-        const content = await fsp.readFile(latestPath, 'utf8');
-        const arr = JSON.parse(content) as any[];
+        console.log(`Deduplicated: ${allDocuments.length} → ${deduplicatedDocuments.length} documents`);
 
         // filter relevant (default) or include all if --all flag
-        const toExport = options.all ? arr : arr.filter(d => d.relevant === true || d.is_relevant === true);
+        const toExport = options.all ? deduplicatedDocuments : deduplicatedDocuments.filter(d => d.relevant === true || d.is_relevant === true);
+
+        console.log(`Exporting ${toExport.length} documents (${pdfDocuments.length} PDFs + ${htmlDocuments.filter(d => options.all || d.is_relevant).length} HTML pages)`);
 
         const csvRows: string[] = [];
-        const headers = ['source_name','file_path','source_url','relevance','type_or_category','title','issuing_body','effective_date_or_published_date','summary','topics_flattened','key_numbers_flattened'];
+        const headers = ['source_name', 'content_type', 'file_path', 'source_url', 'relevance', 'type_or_category', 'title', 'issuing_body', 'effective_date_or_published_date', 'summary', 'topics_flattened', 'key_numbers_flattened'];
         csvRows.push(headers.join(','));
 
         const escape = (v: any) => {
@@ -437,6 +520,7 @@ program
 
         for (const doc of toExport) {
             const source_name = sourceName;
+            const content_type = doc.content_type || (doc.file_path ? 'pdf' : 'html');
             const file_path = doc.file_path || '';
             const source_url = doc.source_url || doc.source || '';
             const relevance = (doc.relevant === true || doc.is_relevant === true) ? 'Yes' : 'No';
@@ -448,7 +532,7 @@ program
             const topics_flattened = flattenTopics(doc);
             const key_numbers = flattenKeyNumbers(doc);
 
-            const row = [source_name,file_path,source_url,relevance,type_or_category,title,issuing_body,effective_date_or_published_date,summary,topics_flattened,key_numbers].map(escape).join(',');
+            const row = [source_name, content_type, file_path, source_url, relevance, type_or_category, title, issuing_body, effective_date_or_published_date, summary, topics_flattened, key_numbers].map(escape).join(',');
             csvRows.push(row);
         }
 
@@ -460,36 +544,81 @@ program
 // Top-level digest: generate a 1-2 page Markdown briefing from reprocessed JSON
 program
     .command('digest')
-    .description('Generate a Markdown briefing from the latest reprocessed JSON for a source')
+    .description('Generate a Markdown briefing from the latest reprocessed JSON for a source (includes PDF and HTML content)')
     .requiredOption('-s, --source <name>', 'Source name (e.g., DOE-legacy-ERC, DOE-circulars_ocr)')
     .action(async (options) => {
         const sourceName = options.source;
 
         const resultsDir = './storage/pdf-crawls';
         const files = await fsp.readdir(resultsDir).catch(() => []);
+
+        // Find reprocessed files (PDF OCR data)
         const reprocessedFiles = files
             .filter((f: string) => f.startsWith(sourceName.replace(/_ocr$/, '')) && f.includes('reprocessed') && f.endsWith('.json'))
             .sort()
             .reverse();
 
-        if (reprocessedFiles.length === 0) {
-            console.log('❌ No reprocessed files found for source');
-            return;
+        // Find crawl result files (may contain HTML data)
+        const crawlResultFiles = files
+            .filter((f: string) => f.startsWith(sourceName.replace(/_ocr$/, '')) && !f.includes('reprocessed') && !f.includes('extracted') && f.endsWith('.json'))
+            .sort()
+            .reverse();
+
+        let pdfDocuments: any[] = [];
+        let htmlDocuments: any[] = [];
+
+        // Load PDF documents from reprocessed files
+        if (reprocessedFiles.length > 0) {
+            const latest = reprocessedFiles[0];
+            const latestPath = path.join(resultsDir, latest);
+            console.log(`Loading PDF data: ${latestPath}`);
+            const content = await fsp.readFile(latestPath, 'utf8');
+            const data = JSON.parse(content);
+            pdfDocuments = Array.isArray(data) ? data : (data.results || []);
         }
 
-        const latest = reprocessedFiles[0];
-        const latestPath = path.join(resultsDir, latest);
-        console.log(`Loading: ${latestPath}`);
-        const content = await fsp.readFile(latestPath, 'utf8');
-        const arr = JSON.parse(content) as any[];
+        // Load HTML documents from crawl result files
+        if (crawlResultFiles.length > 0) {
+            const latest = crawlResultFiles[0];
+            const latestPath = path.join(resultsDir, latest);
+            console.log(`Loading HTML data: ${latestPath}`);
+            try {
+                const content = await fsp.readFile(latestPath, 'utf8');
+                const crawlResult = JSON.parse(content);
+                if (crawlResult.extractedHtmlContent && Array.isArray(crawlResult.extractedHtmlContent)) {
+                    htmlDocuments = crawlResult.extractedHtmlContent;
+                    console.log(`  Found ${htmlDocuments.length} HTML documents`);
+                }
+            } catch (e) {
+                console.log(`  No HTML content found in crawl results`);
+            }
+        }
+
+        // Combine PDF and HTML documents
+        const allDocuments = [...pdfDocuments, ...htmlDocuments];
+
+        // Deduplicate based on title (case-insensitive)
+        const seen = new Map<string, any>();
+        const deduplicatedDocuments = allDocuments.filter(d => {
+            const normalizedTitle = (d.title || '').toLowerCase().trim();
+            if (!normalizedTitle || seen.has(normalizedTitle)) {
+                return false;
+            }
+            seen.set(normalizedTitle, d);
+            return true;
+        });
+
+        console.log(`Deduplicated: ${allDocuments.length} → ${deduplicatedDocuments.length} documents`);
 
         // filter relevant
-        const relevant = arr.filter(d => d.relevant === true || d.is_relevant === true);
+        const relevant = deduplicatedDocuments.filter(d => d.relevant === true || d.is_relevant === true);
 
         if (relevant.length === 0) {
             console.log('❌ No relevant documents found to generate digest');
             return;
         }
+
+        console.log(`Found ${relevant.length} relevant documents (${pdfDocuments.filter(d => d.relevant || d.is_relevant).length} PDFs + ${htmlDocuments.filter(d => d.is_relevant).length} HTML pages)`);
 
         // Check OpenAI key
         if (!process.env.OPENAI_API_KEY) {
@@ -526,19 +655,96 @@ program
 
         console.log(`Generating digest for the ${sortedRelevant.length} most recent documents...`);
 
+        // Helper function to normalize date formats
+        function normalizeDate(dateStr: string | null | undefined): string {
+            if (!dateStr || dateStr === 'N/A') return 'N/A';
+
+            // Try to parse the date
+            const date = new Date(dateStr);
+
+            // Check if valid date
+            if (!isNaN(date.getTime())) {
+                // Format as "Month DD, YYYY" (e.g., "January 28, 2025")
+                return date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+
+            // If it's a year range like "2023-2050", return as is
+            if (/^\d{4}-\d{4}$/.test(dateStr)) {
+                return dateStr;
+            }
+
+            // If it's just a year, return as is
+            if (/^\d{4}$/.test(dateStr)) {
+                return dateStr;
+            }
+
+            // Return original if can't parse
+            return dateStr;
+        }
+
+        // Helper function to infer agency from source name if not provided
+        function inferAgency(issuingBody: any, issuingAgency: any, department: any, sourceName: string): string {
+            // Try existing fields first
+            const agency = issuingBody || issuingAgency || department;
+            if (agency && agency !== 'N/A') {
+                const normalized = agency.trim();
+
+                // Normalize DOE variations
+                if (
+                    normalized === 'Department of Energy' ||
+                    normalized === 'DOE' ||
+                    normalized.toLowerCase().includes('department of energy')
+                ) {
+                    return 'Department of Energy (DOE)';
+                }
+
+                // Normalize ERC variations
+                if (
+                    normalized === 'Energy Regulatory Commission' ||
+                    normalized === 'ERC' ||
+                    normalized.toLowerCase().includes('energy regulatory commission')
+                ) {
+                    return 'Energy Regulatory Commission (ERC)';
+                }
+
+                return normalized;
+            }
+
+            // Infer from source name
+            const lowerSource = sourceName.toLowerCase();
+            if (lowerSource.includes('doe')) return 'Department of Energy (DOE)';
+            if (lowerSource.includes('erc')) return 'Energy Regulatory Commission (ERC)';
+
+            return 'N/A';
+        }
+
         // Prepare payload for LLM with file-based links
         const digestPayload = sortedRelevant.map((d: any) => {
-            // Create a proper link - use file_path to create a relative link to the PDF
+            // Create proper links - use absolute file:// URLs that work when HTML is opened directly
             const filePath = d.file_path || '';
             const fileName = filePath ? path.basename(filePath) : '';
             const sourceFolder = sourceName.replace(/_ocr$/, '').toLowerCase();
-            const pdfLink = fileName ? `/downloads/${sourceFolder}/${fileName}` : (d.source_url || d.source || '');
-            
+
+            // Create absolute file path for local viewing
+            const absoluteFilePath = filePath ? path.resolve(process.cwd(), filePath) : '';
+            const pdfLink = absoluteFilePath ? `file://${absoluteFilePath}` : (d.source_url || d.source || '');
+
+            // Get and normalize the date
+            const rawDate = d.effective_date || d.date_effective || d.published_date || d.date_issued || d.year || 'N/A';
+            const normalizedDate = normalizeDate(rawDate);
+
+            // Infer agency if missing
+            const agency = inferAgency(d.issuing_body, d.issuing_agency, d.department, sourceName);
+
             return {
                 title: d.title || 'Untitled',
                 type: d.type || d.issuance_type || d.category || 'N/A',
-                issuing_body: d.issuing_body || d.issuing_agency || d.department || 'N/A',
-                effective_date_or_published: d.effective_date || d.date_effective || d.published_date || d.date_issued || d.year || 'N/A',
+                issuing_body: agency,
+                effective_date_or_published: normalizedDate,
                 summary: d.summary || d.description || 'No summary available',
                 key_numbers: d.key_numbers || d.key_points || d.procurement_activities || d.procurement_details || [],
                 pdf_link: pdfLink,
@@ -588,16 +794,16 @@ Your task:
             // Convert Markdown to HTML properly
             function convertMarkdownToHtml(markdown: string): string {
                 let html = markdown;
-                
+
                 // First, fix line breaks within table cells (join lines that don't start with | or #)
                 const lines = html.split('\n');
                 const fixedLines: string[] = [];
                 let inTable = false;
-                
+
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const trimmed = line.trim();
-                    
+
                     if (line.startsWith('|')) {
                         inTable = true;
                         fixedLines.push(line);
@@ -614,19 +820,19 @@ Your task:
                     }
                 }
                 html = fixedLines.join('\n');
-                
+
                 // Process tables
                 const tableRegex = /\|(.+)\|\n\|([-:\s|]+)\|\n((?:\|.+\|\n?)+)/g;
                 html = html.replace(tableRegex, (match, headerRow, separator, bodyRows) => {
                     const headers = headerRow.split('|').filter((h: string) => h.trim()).map((h: string) => h.trim());
-                    const rows = bodyRows.trim().split('\n').map((row: string) => 
+                    const rows = bodyRows.trim().split('\n').map((row: string) =>
                         row.split('|').filter((c: string) => c.trim()).map((c: string) => c.trim())
                     );
-                    
+
                     let table = '<table>\n<thead>\n<tr>\n';
                     table += headers.map((h: string) => `<th>${h}</th>`).join('\n');
                     table += '\n</tr>\n</thead>\n<tbody>\n';
-                    
+
                     rows.forEach((row: string[]) => {
                         table += '<tr>\n';
                         table += row.map((cell: string) => {
@@ -636,34 +842,34 @@ Your task:
                         }).join('\n');
                         table += '\n</tr>\n';
                     });
-                    
+
                     table += '</tbody>\n</table>';
                     return table;
                 });
-                
+
                 // Headings
                 html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
                 html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
                 html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-                
+
                 // Links (before lists to handle links within bullets)
                 html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-                
+
                 // Bold text
                 html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-                
+
                 // Lists - handle bullet points
                 html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
                 html = html.replace(/^\* (.+)$/gm, '<li>$1</li>');
-                
+
                 // Wrap consecutive <li> tags in <ul> and handle properly
                 const processedLines = html.split('\n');
                 const result: string[] = [];
                 let inList = false;
-                
+
                 for (const line of processedLines) {
                     const trimmed = line.trim();
-                    
+
                     if (trimmed.startsWith('<li>') && trimmed.endsWith('</li>')) {
                         if (!inList) {
                             result.push('<ul>');
@@ -678,17 +884,17 @@ Your task:
                         result.push(line);
                     }
                 }
-                
+
                 if (inList) {
                     result.push('</ul>');
                 }
-                
+
                 html = result.join('\n');
-                
+
                 // Paragraphs - wrap non-HTML lines in <p> tags
                 const finalLines = html.split('\n');
                 const withParagraphs: string[] = [];
-                
+
                 for (const line of finalLines) {
                     const trimmed = line.trim();
                     if (trimmed === '') {
@@ -701,7 +907,7 @@ Your task:
                         withParagraphs.push(`<p>${trimmed}</p>`);
                     }
                 }
-                
+
                 return withParagraphs.join('\n');
             }
 
@@ -802,12 +1008,12 @@ Your task:
     <div class="container">
 ${htmlContent}
         <div class="timestamp">
-            Generated: ${new Date().toLocaleString('en-US', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric', 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            Generated: ${new Date().toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
             })}
         </div>
     </div>
@@ -818,22 +1024,156 @@ ${htmlContent}
             const digestDir = path.join('./storage/digests', sourceName);
             await fsp.mkdir(digestDir, { recursive: true });
             const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-            
+
             const mdPath = path.join(digestDir, `digest_${timestamp}.md`);
             const htmlPath = path.join(digestDir, `digest_${timestamp}.html`);
-            
+
             await fsp.writeFile(mdPath, md, 'utf8');
             await fsp.writeFile(htmlPath, html, 'utf8');
-            
+
             const htmlFilename = `digest_${timestamp}.html`;
             const httpUrl = `http://localhost:3001/digests/${sourceName}/${htmlFilename}`;
-            
+
             console.log(`✅ Digest saved:`);
             console.log(`   Markdown: ${mdPath}`);
             console.log(`   HTML: ${htmlPath}`);
             console.log(`   \n🌐 Open in browser: ${httpUrl}`);
         } catch (err) {
             console.error('❌ Digest generation failed:', err instanceof Error ? err.message : String(err));
+        }
+    });
+
+program
+    .command('changes')
+    .description('View document changes and version history')
+    .requiredOption('-s, --source <name>', 'Source name')
+    .option('--review', 'Show only changes requiring review', false)
+    .option('--limit <number>', 'Limit number of changes to show', '20')
+    .action(async (options) => {
+        const { Pool } = await import('pg');
+        const { DocumentChangeDetector } = await import('../services/document-change-detector.js');
+
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/csv_crawler'
+        });
+
+        const detector = new DocumentChangeDetector(pool);
+
+        try {
+            // Get source from configs
+            const sourceName = options.source;
+            if (!SOURCE_CONFIGS[sourceName]) {
+                console.error(`❌ Unknown source: ${sourceName}`);
+                process.exit(1);
+            }
+
+            // For now, use a mock source_id (in real usage, query from sources table)
+            const sourceId = '00000000-0000-0000-0000-000000000001'; // TODO: Query from DB
+
+            const changes = options.review
+                ? await detector.getChangesForReview(sourceId)
+                : await detector.getRecentChanges(sourceId, parseInt(options.limit));
+
+            if (changes.length === 0) {
+                console.log(`\n📭 No changes found for source: ${sourceName}`);
+                await pool.end();
+                return;
+            }
+
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`DOCUMENT CHANGES - ${sourceName}`);
+            console.log(`${'='.repeat(80)}\n`);
+
+            changes.forEach((change, idx) => {
+                const significance = change.significance_score
+                    ? `${(change.significance_score * 100).toFixed(0)}%`
+                    : 'N/A';
+
+                const reviewFlag = change.requires_review ? '⚠️  REVIEW' : '';
+
+                console.log(`[${idx + 1}] ${change.change_type.toUpperCase()} ${reviewFlag}`);
+                console.log(`    Title: ${change.document_title}`);
+                console.log(`    URL: ${change.document_url}`);
+                console.log(`    Detected: ${new Date(change.detected_at).toLocaleString()}`);
+                console.log(`    Significance: ${significance}`);
+
+                if (change.change_summary) {
+                    console.log(`    Summary: ${change.change_summary}`);
+                }
+
+                if (change.old_version_number && change.new_version_number) {
+                    console.log(`    Version: ${change.old_version_number} → ${change.new_version_number}`);
+                }
+
+                console.log('');
+            });
+
+            console.log(`Showing ${changes.length} change(s)\n`);
+
+        } catch (error) {
+            console.error('❌ Failed to retrieve changes:', error);
+        } finally {
+            await pool.end();
+        }
+    });
+
+program
+    .command('versions')
+    .description('View version history for a specific document')
+    .requiredOption('-s, --source <name>', 'Source name')
+    .requiredOption('-u, --url <url>', 'Document URL')
+    .action(async (options) => {
+        const { Pool } = await import('pg');
+        const { DocumentChangeDetector } = await import('../services/document-change-detector.js');
+
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/csv_crawler'
+        });
+
+        const detector = new DocumentChangeDetector(pool);
+
+        try {
+            const sourceName = options.source;
+            if (!SOURCE_CONFIGS[sourceName]) {
+                console.error(`❌ Unknown source: ${sourceName}`);
+                process.exit(1);
+            }
+
+            const sourceId = '00000000-0000-0000-0000-000000000001'; // TODO: Query from DB
+            const versions = await detector.getVersionHistory(sourceId, options.url);
+
+            if (versions.length === 0) {
+                console.log(`\n📭 No versions found for URL: ${options.url}`);
+                await pool.end();
+                return;
+            }
+
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`VERSION HISTORY`);
+            console.log(`${'='.repeat(80)}\n`);
+            console.log(`Document: ${versions[0].document_title}`);
+            console.log(`URL: ${options.url}`);
+            console.log(`Total versions: ${versions.length}\n`);
+
+            versions.forEach(version => {
+                const current = version.is_current ? '(CURRENT)' : '';
+                console.log(`Version ${version.version_number} ${current}`);
+                console.log(`  First seen: ${new Date(version.first_seen_at!).toLocaleString()}`);
+                console.log(`  Last seen: ${new Date(version.last_seen_at!).toLocaleString()}`);
+                console.log(`  Change type: ${version.change_type || 'N/A'}`);
+                console.log(`  Content hash: ${version.content_hash.substring(0, 16)}...`);
+
+                if (version.changes_detected && Object.keys(version.changes_detected).length > 0) {
+                    console.log(`  Changes: ${JSON.stringify(version.changes_detected)}`);
+                }
+
+                console.log('');
+            });
+
+        } catch (error) {
+            console.error('❌ Failed to retrieve version history:', error);
+        } finally {
+            await pool.end();
         }
     });
 

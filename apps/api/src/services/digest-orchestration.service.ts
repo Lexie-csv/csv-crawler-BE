@@ -18,7 +18,7 @@ export class DigestOrchestrationService {
 
     constructor() {
         // Store digests in a dedicated directory
-        this.digestStoragePath = process.env.DIGEST_STORAGE_PATH || 
+        this.digestStoragePath = process.env.DIGEST_STORAGE_PATH ||
             path.join(process.cwd(), '../../storage/digests');
     }
 
@@ -39,8 +39,8 @@ export class DigestOrchestrationService {
             console.log(`[DigestOrchestration] Storage directory: ${this.digestStoragePath}`);
 
             // Get source info
-            const source = await queryOne<{ name: string; url: string }>(
-                'SELECT name, url FROM sources WHERE id = $1',
+            const source = await queryOne<{ name: string; url: string; type: string; extraction_prompt: string | null }>(
+                'SELECT name, url, type, extraction_prompt FROM sources WHERE id = $1',
                 [sourceId]
             );
 
@@ -50,6 +50,9 @@ export class DigestOrchestrationService {
             }
 
             console.log(`[DigestOrchestration] Source: ${source.name}`);
+            if (source.extraction_prompt) {
+                console.log(`[DigestOrchestration] Using source-specific extraction prompt`);
+            }
 
             // Get all documents from this crawl job
             const documents = await query<Document>(
@@ -97,10 +100,14 @@ export class DigestOrchestrationService {
                         });
                     }
 
-                    // Classify relevance
-                    const classification = await llmExtractor.classifyRelevance(doc);
+                    // Classify relevance (use source-specific prompt if available)
+                    const classification = await llmExtractor.classifyRelevance(
+                        doc,
+                        source.extraction_prompt || undefined,
+                        source.type // Pass source type for dynamic schema
+                    );
                     console.log(`[DigestOrchestration] Classification: relevant=${classification.isRelevant}, category=${classification.category}, confidence=${classification.confidence}`);
-                    
+
                     // Update document classification in DB
                     await query(
                         'UPDATE documents SET classification = $1, confidence = $2 WHERE id = $3',
@@ -115,8 +122,8 @@ export class DigestOrchestrationService {
                     relevantCount++;
                     console.log(`[DigestOrchestration] ✓ Document is relevant, extracting...`);
 
-                    // Extract events and datapoints
-                    const extraction = await llmExtractor.extractEventsAndDatapoints(doc);
+                    // Extract events and datapoints (use source-specific prompt if available)
+                    const extraction = await llmExtractor.extractEventsAndDatapoints(doc, source.extraction_prompt || undefined);
                     console.log(`[DigestOrchestration] Extracted: ${extraction.events.length} events, ${extraction.datapoints.length} datapoints`);
 
                     // Convert events to highlights
@@ -140,7 +147,7 @@ export class DigestOrchestrationService {
 
                     // Small delay to avoid rate limits
                     await this.sleep(500);
-                    
+
                 } catch (error) {
                     console.error(`[DigestOrchestration] ❌ Error processing document ${doc.id}:`, error);
                     // Continue with other documents
@@ -183,7 +190,7 @@ export class DigestOrchestrationService {
             const timestamp = new Date().toISOString().split('T')[0];
             const filename = `digest-${sourceId}-${timestamp}.md`;
             const filePath = path.join(this.digestStoragePath, filename);
-            
+
             await fs.writeFile(filePath, markdownContent, 'utf-8');
             console.log(`[DigestOrchestration] ✓ Markdown saved to: ${filePath}`);
 
@@ -254,7 +261,7 @@ export class DigestOrchestrationService {
 
         // Regex: look for label followed within 40 chars by a percentage number
         const labelPattern = labels.map(l => l.replace(/\s+/g, '\\s+')).join('|');
-        const re = new RegExp(`(?:${labelPattern})[^\n\r]{0,60}?([0-9]+(?:\.[0-9]+)?)\s*%`, 'igi');
+        const re = new RegExp(`(?:${labelPattern})[^\n\r]{0,60}?([0-9]+(?:\.[0-9]+)?)\s*%`, 'gi');
 
         const seen = new Set<string>();
         let m: RegExpExecArray | null;
@@ -296,7 +303,7 @@ export class DigestOrchestrationService {
         }
 
         // Also scan lines for patterns like "Policy Rate — 6.25%" not caught above
-        const lineRe = new RegExp(`(${labelPattern}).{0,40}?(?:[:–—\-\\s]){0,6}([0-9]+(?:\.[0-9]+)?)\s*%`, 'imi');
+        const lineRe = new RegExp(`(${labelPattern}).{0,40}?(?:[:–—\-\\s]){0,6}([0-9]+(?:\.[0-9]+)?)\s*%`, 'im');
         const lines = content.split(/\r?\n/);
         for (const line of lines) {
             const lm = line.match(lineRe);
