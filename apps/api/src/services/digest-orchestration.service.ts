@@ -1,6 +1,7 @@
 import { query, queryOne } from '@csv/db';
-import { DigestHighlight, DigestDatapoint, CrawlDigest } from '@csv/types';
+import { DigestHighlight, DigestDatapoint, DigestHighlightRow, DigestDatapointRow, CrawlDigest, PromptTemplate } from '@csv/types';
 import { llmExtractor } from './llm-extraction.service';
+import { getPromptByTemplate, getDefaultTemplate, isValidTemplate } from '../prompts/extraction-prompts';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -38,9 +39,15 @@ export class DigestOrchestrationService {
             await fs.mkdir(this.digestStoragePath, { recursive: true });
             console.log(`[DigestOrchestration] Storage directory: ${this.digestStoragePath}`);
 
-            // Get source info
-            const source = await queryOne<{ name: string; url: string; type: string; extraction_prompt: string | null }>(
-                'SELECT name, url, type, extraction_prompt FROM sources WHERE id = $1',
+            // Get source info (including prompt template and custom prompt)
+            const source = await queryOne<{ 
+                name: string; 
+                url: string; 
+                type: string; 
+                prompt_template: string | null;
+                extraction_prompt: string | null;
+            }>(
+                'SELECT name, url, type, prompt_template, extraction_prompt FROM sources WHERE id = $1',
                 [sourceId]
             );
 
@@ -49,10 +56,29 @@ export class DigestOrchestrationService {
                 throw new Error(`Source ${sourceId} not found`);
             }
 
-            console.log(`[DigestOrchestration] Source: ${source.name}`);
+            // Determine which prompt to use (priority: custom > template > default)
+            let effectivePrompt: string | undefined;
+            let promptSource: string;
+
             if (source.extraction_prompt) {
-                console.log(`[DigestOrchestration] Using source-specific extraction prompt`);
+                // Custom prompt takes highest priority
+                effectivePrompt = source.extraction_prompt;
+                promptSource = 'custom';
+                console.log(`[DigestOrchestration] Using source-specific custom prompt`);
+            } else if (source.prompt_template && isValidTemplate(source.prompt_template)) {
+                // Use template from library
+                effectivePrompt = getPromptByTemplate(source.prompt_template as PromptTemplate);
+                promptSource = `template:${source.prompt_template}`;
+                console.log(`[DigestOrchestration] Using prompt template: ${source.prompt_template}`);
+            } else {
+                // Fallback to default template
+                const defaultTemplate = getDefaultTemplate();
+                effectivePrompt = getPromptByTemplate(defaultTemplate);
+                promptSource = `template:${defaultTemplate} (default)`;
+                console.log(`[DigestOrchestration] Using default prompt template: ${defaultTemplate}`);
             }
+
+            console.log(`[DigestOrchestration] Source: ${source.name} | Prompt: ${promptSource}`);
 
             // Get all documents from this crawl job
             const documents = await query<Document>(
@@ -100,10 +126,10 @@ export class DigestOrchestrationService {
                         });
                     }
 
-                    // Classify relevance (use source-specific prompt if available)
+                    // Classify relevance (use determined effective prompt)
                     const classification = await llmExtractor.classifyRelevance(
                         doc,
-                        source.extraction_prompt || undefined,
+                        effectivePrompt,
                         source.type // Pass source type for dynamic schema
                     );
                     console.log(`[DigestOrchestration] Classification: relevant=${classification.isRelevant}, category=${classification.category}, confidence=${classification.confidence}`);
@@ -122,8 +148,8 @@ export class DigestOrchestrationService {
                     relevantCount++;
                     console.log(`[DigestOrchestration] ✓ Document is relevant, extracting...`);
 
-                    // Extract events and datapoints (use source-specific prompt if available)
-                    const extraction = await llmExtractor.extractEventsAndDatapoints(doc, source.extraction_prompt || undefined);
+                    // Extract events and datapoints (use determined effective prompt)
+                    const extraction = await llmExtractor.extractEventsAndDatapoints(doc, effectivePrompt);
                     console.log(`[DigestOrchestration] Extracted: ${extraction.events.length} events, ${extraction.datapoints.length} datapoints`);
 
                     // Convert events to highlights
@@ -231,6 +257,80 @@ export class DigestOrchestrationService {
             if (!digest) {
                 throw new Error('Failed to insert digest record');
             }
+
+            console.log(`[DigestOrchestration] ✓ Digest record created: ${digest.id}`);
+
+            // Step 6: Populate normalized digest_highlights table
+            console.log(`[DigestOrchestration] Populating digest_highlights table...`);
+            if (allHighlights.length > 0) {
+                for (const highlight of allHighlights) {
+                    try {
+                        await query(
+                            `INSERT INTO digest_highlights (
+                                digest_id, text, type, source_url, category, metadata
+                            ) VALUES ($1, $2, $3, $4, $5, $6)`,
+                            [
+                                digest.id,
+                                highlight.summary || highlight.title || '', // text field
+                                highlight.category || null, // type
+                                highlight.sourceUrl || null, // source_url
+                                highlight.category || null, // category (duplicate for now)
+                                JSON.stringify({
+                                    title: highlight.title,
+                                    documentId: highlight.documentId,
+                                    effectiveDate: highlight.effectiveDate,
+                                    confidence: highlight.confidence
+                                })
+                            ]
+                        );
+                    } catch (highlightError) {
+                        console.error(`[DigestOrchestration] Warning: Failed to insert highlight:`, highlightError);
+                        // Don't fail the whole digest if one highlight fails
+                    }
+                }
+                console.log(`[DigestOrchestration] ✓ Inserted ${allHighlights.length} highlights`);
+            }
+
+            // Step 7: Populate normalized digest_datapoints table
+            console.log(`[DigestOrchestration] Populating digest_datapoints table...`);
+            if (validatedDatapoints.length > 0) {
+                for (const datapoint of validatedDatapoints) {
+                    try {
+                        await query(
+                            `INSERT INTO digest_datapoints (
+                                digest_id, field, value, unit, context, source_url, effective_date, metadata
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                            [
+                                digest.id,
+                                datapoint.indicatorCode || 'unknown', // field
+                                String(datapoint.value), // value (convert to string)
+                                datapoint.unit || null, // unit
+                                datapoint.description || null, // context
+                                datapoint.sourceUrl || null, // source_url
+                                datapoint.effectiveDate || null, // effective_date
+                                JSON.stringify({
+                                    country: datapoint.country,
+                                    sourceDocumentId: datapoint.sourceDocumentId
+                                })
+                            ]
+                        );
+                    } catch (datapointError) {
+                        console.error(`[DigestOrchestration] Warning: Failed to insert datapoint:`, datapointError);
+                        // Don't fail the whole digest if one datapoint fails
+                    }
+                }
+                console.log(`[DigestOrchestration] ✓ Inserted ${validatedDatapoints.length} datapoints`);
+            }
+
+            // Step 8: Update denormalized counts on crawl_digests
+            console.log(`[DigestOrchestration] Updating denormalized counts...`);
+            await query(
+                `UPDATE crawl_digests 
+                 SET highlights_count = $1, datapoints_count = $2, updated_at = NOW()
+                 WHERE id = $3`,
+                [allHighlights.length, validatedDatapoints.length, digest.id]
+            );
+            console.log(`[DigestOrchestration] ✓ Updated counts: ${allHighlights.length} highlights, ${validatedDatapoints.length} datapoints`);
 
             console.log(`[DigestOrchestration] ✓✓✓ Digest created successfully ✓✓✓`);
             console.log(`[DigestOrchestration] Digest ID: ${digest.id}`);
@@ -457,22 +557,89 @@ export class DigestOrchestrationService {
 
     /**
      * Get digest by crawl job ID
+     * Now includes highlights and datapoints from normalized tables
      */
     async getDigestByJobId(crawlJobId: string): Promise<CrawlDigest | null> {
-        const digest = await queryOne<CrawlDigest>(
+        // First get the main digest record
+        const digest = await queryOne<any>(
             `SELECT 
-                id, crawl_job_id as "crawlJobId", source_id as "sourceId",
-                period_start as "periodStart", period_end as "periodEnd",
-                summary_markdown as "summaryMarkdown",
-                summary_markdown_path as "summaryMarkdownPath",
-                highlights, datapoints, metadata,
-                created_at as "createdAt", updated_at as "updatedAt"
-             FROM crawl_digests
-             WHERE crawl_job_id = $1`,
+                cd.id, 
+                cd.crawl_job_id, 
+                cd.source_id,
+                s.name as source_name,
+                cd.period_start, 
+                cd.period_end,
+                cd.summary_markdown,
+                cd.summary_markdown_path,
+                cd.highlights_count,
+                cd.datapoints_count,
+                cd.metadata,
+                cj.completed_at,
+                cd.created_at, 
+                cd.updated_at
+             FROM crawl_digests cd
+             LEFT JOIN sources s ON s.id = cd.source_id
+             LEFT JOIN crawl_jobs cj ON cj.id = cd.crawl_job_id
+             WHERE cd.crawl_job_id = $1`,
             [crawlJobId]
         );
 
-        return digest;
+        if (!digest) {
+            return null;
+        }
+
+        // Fetch highlights from normalized table
+        const highlightRows = await query<DigestHighlightRow>(
+            `SELECT 
+                id, digest_id, text, type, source_url, document_id, 
+                category, importance, metadata, created_at
+             FROM digest_highlights
+             WHERE digest_id = $1
+             ORDER BY importance DESC, created_at ASC`,
+            [digest.id]
+        );
+
+        // Fetch datapoints from normalized table
+        const datapointRows = await query<DigestDatapointRow>(
+            `SELECT 
+                id, digest_id, field, value, unit, context, source_url, 
+                document_id, effective_date, metadata, created_at
+             FROM digest_datapoints
+             WHERE digest_id = $1
+             ORDER BY effective_date DESC NULLS LAST, created_at ASC`,
+            [digest.id]
+        );
+
+        // Map database rows to API format (DigestHighlight and DigestDatapoint)
+        const highlights: DigestHighlight[] = (highlightRows || []).map(row => ({
+            title: row.text.split('\n')[0] || row.text.substring(0, 100), // First line as title
+            summary: row.text,
+            category: row.category as any || 'other',
+            documentId: row.document_id || null,
+            sourceUrl: row.source_url || '',
+            effectiveDate: (row.metadata?.effective_date as string) || null,
+            confidence: typeof row.importance === 'number' ? row.importance : 0.8,
+        }));
+
+        const datapoints: DigestDatapoint[] = (datapointRows || []).map(row => ({
+            indicatorCode: row.field.toUpperCase().replace(/\s+/g, '_'),
+            description: row.context || row.field,
+            value: row.value,
+            unit: row.unit || null,
+            effectiveDate: row.effective_date || null,
+            country: 'Philippines',
+            metadata: row.metadata || {},
+            sourceDocumentId: row.document_id || '',
+            sourceUrl: row.source_url || '',
+            confidence: 0.9,
+        }));
+
+        // Return complete digest with normalized data
+        return {
+            ...digest,
+            highlights,
+            datapoints,
+        } as CrawlDigest;
     }
 
     /**
@@ -510,25 +677,42 @@ export class DigestOrchestrationService {
         );
         const totalItems = parseInt(countResult?.count || '0', 10);
 
-        // Get paginated results
+        // Get paginated results with denormalized counts
         params.push(pageSize, offset);
         const digests = await query<CrawlDigest>(
             `SELECT 
-                id, crawl_job_id as "crawlJobId", source_id as "sourceId",
-                period_start as "periodStart", period_end as "periodEnd",
-                summary_markdown as "summaryMarkdown",
-                summary_markdown_path as "summaryMarkdownPath",
-                highlights, datapoints, metadata,
-                created_at as "createdAt", updated_at as "updatedAt"
-             FROM crawl_digests
+                cd.id, 
+                cd.crawl_job_id, 
+                cd.source_id,
+                s.name as source_name,
+                cd.period_start, 
+                cd.period_end,
+                cd.summary_markdown,
+                cd.summary_markdown_path,
+                COALESCE(cd.highlights_count, 0) as highlights_count,
+                COALESCE(cd.datapoints_count, 0) as datapoints_count,
+                cd.metadata,
+                cj.completed_at,
+                cd.created_at, 
+                cd.updated_at
+             FROM crawl_digests cd
+             LEFT JOIN sources s ON s.id = cd.source_id
+             LEFT JOIN crawl_jobs cj ON cj.id = cd.crawl_job_id
              ${whereClause}
-             ORDER BY created_at DESC
+             ORDER BY cd.created_at DESC
              LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
             params
         );
 
+        // Add empty highlights/datapoints arrays for list view (full data in getDigestByJobId)
+        const mappedDigests = digests.map(d => ({
+            ...d,
+            highlights: [],
+            datapoints: [],
+        })) as CrawlDigest[];
+
         return {
-            items: digests,
+            items: mappedDigests,
             page,
             pageSize,
             totalItems,

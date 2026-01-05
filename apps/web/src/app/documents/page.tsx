@@ -42,7 +42,7 @@ export default function DocumentsPage(): JSX.Element {
 
     const loadDocuments = async () => {
         try {
-            const params: any = {};
+            const params: Record<string, string | boolean> = {};
             if (filters.source_id) params.source_id = filters.source_id;
             if (filters.crawl_job_id) params.crawl_job_id = filters.crawl_job_id;
             if (filters.extracted !== 'all') params.extracted = filters.extracted === 'true';
@@ -111,8 +111,8 @@ export default function DocumentsPage(): JSX.Element {
             render: (doc: Document) => (
                 <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${doc.extracted
-                            ? 'bg-green-100 text-green-800 border border-green-200'
-                            : 'bg-gray-100 text-gray-800 border border-gray-200'
+                        ? 'bg-green-100 text-green-800 border border-green-200'
+                        : 'bg-gray-100 text-gray-800 border border-gray-200'
                         }`}
                 >
                     {doc.extracted ? 'Yes' : 'Pending'}

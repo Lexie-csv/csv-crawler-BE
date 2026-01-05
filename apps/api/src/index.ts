@@ -9,6 +9,7 @@ import digestsRouter from './routes/digests';
 import datapointsRouter from './routes/datapoints';
 import extractionRouter from './routes/extraction';
 import documentsRouter from './routes/documents';
+import promptsRouter from './routes/prompts';
 import { initializeDigestScheduler } from './jobs/weekly-digest';
 
 const app: Express = express();
@@ -63,6 +64,7 @@ app.use('/api/v1/digest', digestRouter);
 app.use('/api/v1/digests', digestsRouter);
 app.use('/api/v1/extraction', extractionRouter);
 app.use('/api/v1/documents', documentsRouter);
+app.use('/api/v1/prompts', promptsRouter);
 
 // Initialize scheduled jobs
 initializeDigestScheduler();

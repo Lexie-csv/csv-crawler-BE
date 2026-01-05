@@ -245,8 +245,27 @@ export class MultiPageCrawlerService {
                 return;
             }
 
-            // This is an article page - save it
+            // This is an article page - check keyword filter
             console.log(`[MultiPageCrawler] ✓ Article page detected: ${url}`);
+
+            // Check if content matches required keywords (if specified)
+            if (this.sourceConfig?.requiredKeywords && this.sourceConfig.requiredKeywords.length > 0) {
+                const contentLower = (result.title + ' ' + result.content).toLowerCase();
+                const hasKeyword = this.sourceConfig.requiredKeywords.some(keyword =>
+                    contentLower.includes(keyword.toLowerCase())
+                );
+
+                if (!hasKeyword) {
+                    console.log(`[MultiPageCrawler] ⊘ Skipping ${url} - no required keywords found (${this.sourceConfig.requiredKeywords.join(', ')})`);
+                    // Don't save, but still extract links
+                    const newLinks = this.extractLinks(url, result.links, depth);
+                    for (const link of newLinks) {
+                        this.addToPending({ url: link, depth: depth + 1, sourceUrl: url });
+                    }
+                    return;
+                }
+                console.log(`[MultiPageCrawler] ✓ Content matches required keywords`);
+            }
 
             // Check for duplicate content
             const existing = await queryOne<{ id: string }>(
@@ -305,19 +324,22 @@ export class MultiPageCrawlerService {
 
             // Navigate with extended timeout for Cloudflare challenge
             await page.goto(url, {
-                timeout: 60000,
+                timeout: 90000, // Increased from 60s to 90s
                 waitUntil: 'networkidle',
             });
 
-            // Wait for Cloudflare challenge to complete
-            await page.waitForTimeout(8000);
+            // Wait for Cloudflare challenge to complete - increased wait times
+            await page.waitForTimeout(12000); // Increased from 8s to 12s
 
             // Check if we're still on Cloudflare challenge
             const title = await page.title();
-            if (title.includes('Just a moment')) {
+            if (title.includes('Just a moment') || title.includes('Cloudflare')) {
                 console.log(`[MultiPageCrawler] Still on Cloudflare, waiting longer...`);
-                await page.waitForTimeout(15000);
+                await page.waitForTimeout(20000); // Increased from 15s to 20s
             }
+
+            // Additional wait for dynamic content to load
+            await page.waitForTimeout(3000);
 
             // Get the page content
             const html = await page.content();
@@ -722,9 +744,9 @@ export class MultiPageCrawlerService {
             'SELECT type FROM sources WHERE id = $1',
             [sourceId]
         );
-        
+
         const isAlert = sourceResult.length > 0 && sourceResult[0].type === 'policy';
-        
+
         await query(
             `INSERT INTO documents (
                 source_id, crawl_job_id, url, title, content, content_hash,

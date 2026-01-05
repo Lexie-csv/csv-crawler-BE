@@ -1,6 +1,9 @@
 // Domain types for CSV Policy & Data Crawler
 // All types are based on the canonical UUID-based schema in packages/db/migrations/001_init_schema.sql
 
+// Re-export API types (single source of truth for API contracts)
+export * from './api.js';
+
 /**
  * Source: A regulatory watchlist entry (website, regulator, exchange, etc.)
  */
@@ -14,10 +17,21 @@ export interface Source {
     readonly frequency?: 'daily' | 'weekly' | 'monthly' | 'ad-hoc';
     readonly active: boolean;
     readonly crawlConfig?: SourceCrawlConfig | null;
-    readonly extractionPrompt?: string | null; // Custom LLM prompt for this source
+    readonly promptTemplate?: PromptTemplate | null; // Template name from extraction-prompts.ts
+    readonly extractionPrompt?: string | null; // Custom LLM prompt (overrides promptTemplate)
     readonly createdAt: Date;
     readonly updatedAt: Date;
 }
+
+/**
+ * Available extraction prompt templates
+ */
+export type PromptTemplate = 
+    | 'news_article'
+    | 'government_regulation'
+    | 'press_release'
+    | 'energy_tender'
+    | 'financial_report';
 
 /**
  * CrawlJob: Tracking for a crawl execution
@@ -190,6 +204,7 @@ export interface CrawlerConfig {
     readonly concurrency?: number;
     readonly allowedPathPatterns?: string[];
     readonly blockedPathPatterns?: string[];
+    readonly requiredKeywords?: string[];  // Filter articles by keywords in title/content
 }
 
 /**
@@ -219,24 +234,6 @@ export interface DigestDatapoint {
     readonly sourceDocumentId: string;
     readonly sourceUrl: string;
     readonly confidence?: number;
-}
-
-/**
- * CrawlDigest: LLM-generated summary of a crawl job
- */
-export interface CrawlDigest {
-    readonly id: string;
-    readonly crawlJobId: string;
-    readonly sourceId: string;
-    readonly periodStart: string;
-    readonly periodEnd: string;
-    readonly summaryMarkdown?: string | null;
-    readonly summaryMarkdownPath?: string | null;
-    readonly highlights: DigestHighlight[];
-    readonly datapoints: DigestDatapoint[];
-    readonly metadata?: Record<string, any>;
-    readonly createdAt: string;
-    readonly updatedAt?: string;
 }
 
 /**

@@ -82,12 +82,15 @@ router.get('/', async (req, res) => {
 
         const countResult = await query(countSql, countParams);
         const total = parseInt((countResult[0] as any).total);
+        const limitNum = parseInt(limit as string);
+        const offsetNum = parseInt(offset as string);
 
         res.json({
             data: result,
             total,
-            limit: parseInt(limit as string),
-            offset: parseInt(offset as string),
+            limit: limitNum,
+            offset: offsetNum,
+            hasMore: offsetNum + result.length < total,
             timestamp: new Date().toISOString()
         });
     } catch (error) {

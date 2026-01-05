@@ -1,221 +1,108 @@
 /**
  * API Client for CSV Crawler
  * Provides typed fetch wrappers for backend endpoints
+ * 
+ * All types imported from @csv/types for consistency
  */
 
-// Use relative URL to go through Next.js proxy
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+import { apiClient } from './api/client';
+import type {
+    Source,
+    CrawlJob,
+    CrawlDigest,
+    Document,
+    DigestHighlight,
+    DigestDatapoint,
+    CreateSourceInput,
+    UpdateSourceInput,
+    CreateCrawlJobInput,
+    UpdateCrawlJobInput,
+    DocumentsListParams,
+    DigestsListParams,
+    ApiResponse,
+    PaginatedResponse,
+    DocumentsListResponse,
+    DigestsListResponse,
+} from '@csv/types';
 
-interface FetchOptions extends RequestInit {
-    params?: Record<string, string | number | boolean>;
-}
-
-/**
- * Generic API fetch wrapper with error handling
- */
-async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-    const { params, ...fetchOptions } = options;
-
-    // Build URL with query params
-    let url = `${API_BASE_URL}${endpoint}`;
-    if (params) {
-        const searchParams = new URLSearchParams();
-        Object.entries(params).forEach(([key, value]) => {
-            searchParams.append(key, String(value));
-        });
-        url += `?${searchParams.toString()}`;
-    }
-
-    const response = await fetch(url, {
-        ...fetchOptions,
-        headers: {
-            'Content-Type': 'application/json',
-            ...fetchOptions.headers,
-        },
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(errorData.error || `API Error: ${response.status}`);
-    }
-
-    return response.json();
-}
+// Re-export all shared types for backwards compatibility
+export type {
+    Source,
+    CrawlJob,
+    CrawlDigest,
+    Document,
+    DigestHighlight,
+    DigestDatapoint,
+    CreateSourceInput,
+    UpdateSourceInput,
+    CreateCrawlJobInput,
+    UpdateCrawlJobInput,
+    DocumentsListParams,
+    DigestsListParams,
+    ApiResponse,
+    PaginatedResponse,
+    DocumentsListResponse,
+    DigestsListResponse,
+};
 
 // ===========================
 // SOURCES API
 // ===========================
 
-export interface Source {
-    id: string;
-    name: string;
-    url: string;
-    type: 'policy' | 'exchange' | 'gazette' | 'ifi' | 'portal' | 'news';
-    country: string;
-    sector: string | null;
-    active: boolean;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface CreateSourceInput {
-    name: string;
-    url: string;
-    type: 'policy' | 'exchange' | 'gazette' | 'ifi' | 'portal' | 'news';
-    country: string;
-    sector?: string | null;
-    active?: boolean;
-}
-
-export interface UpdateSourceInput extends Partial<CreateSourceInput> { }
-
-interface ApiResponse<T> {
-    data: T;
-    message?: string;
-    timestamp: string;
-}
-
-interface PaginatedResponse<T> extends ApiResponse<T[]> {
-    total: number;
-    limit: number;
-    offset: number;
-}
-
 export const sourcesApi = {
-    list: async () => {
-        const response = await apiFetch<PaginatedResponse<Source>>('/sources');
-        return response.data;
+    list: async (): Promise<Source[]> => {
+        const response = await apiClient.get<{ data: Source[] }>('/sources');
+        return response.data.data;
     },
 
-    getById: async (id: string) => {
-        const response = await apiFetch<ApiResponse<Source>>(`/sources/${id}`);
-        return response.data;
+    getById: async (id: string): Promise<Source> => {
+        const response = await apiClient.get<{ data: Source }>(`/sources/${id}`);
+        return response.data.data;
     },
 
-    create: async (data: CreateSourceInput) => {
-        const response = await apiFetch<ApiResponse<Source>>('/sources', {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-        return response.data;
+    create: async (data: CreateSourceInput): Promise<Source> => {
+        const response = await apiClient.post<{ data: Source }>('/sources', data);
+        return response.data.data;
     },
 
-    update: async (id: string, data: UpdateSourceInput) => {
-        const response = await apiFetch<ApiResponse<Source>>(`/sources/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-        return response.data;
+    update: async (id: string, data: UpdateSourceInput): Promise<Source> => {
+        const response = await apiClient.put<{ data: Source }>(`/sources/${id}`, data);
+        return response.data.data;
     },
 
-    delete: (id: string) =>
-        apiFetch<void>(`/sources/${id}`, {
-            method: 'DELETE',
-        }),
+    delete: async (id: string): Promise<void> => {
+        await apiClient.delete(`/sources/${id}`);
+    },
 };
 
 // ===========================
 // CRAWL JOBS API
 // ===========================
 
-export interface CrawlJob {
-    id: string;
-    source_id: string;
-    status: 'pending' | 'running' | 'done' | 'failed';
-    started_at: string | null;
-    completed_at: string | null;
-    items_crawled: number;
-    items_new: number;
-    pages_crawled?: number;
-    pages_new?: number;
-    pages_failed?: number;
-    pages_skipped?: number;
-    max_depth?: number;
-    max_pages?: number;
-    error_message: string | null;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface CreateCrawlJobInput {
-    sourceId: string;
-    useMultiPage?: boolean;
-    maxDepth?: number;
-    maxPages?: number;
-    concurrency?: number;
-}
-
-export interface CrawlDigest {
-    id: string;
-    crawl_job_id: string;
-    source_id: string;
-    period_start: string;
-    period_end: string;
-    summary_markdown: string;
-    summary_markdown_path: string | null;
-    highlights: Array<{
-        title: string;
-        summary: string;
-        category: string;
-        documentId: string;
-        effectiveDate?: string;
-        sourceUrl?: string;
-        metadata?: Record<string, any>;
-    }>;
-    datapoints: Array<{
-        indicatorCode: string;
-        description: string;
-        value: string | number;
-        unit?: string;
-        effectiveDate?: string;
-        country?: string;
-        sourceDocumentId: string;
-        sourceUrl: string;
-    }>;
-    metadata: Record<string, any> | null;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface UpdateCrawlJobInput {
-    status?: 'pending' | 'running' | 'done' | 'failed';
-    started_at?: string | null;
-    completed_at?: string | null;
-    items_crawled?: number;
-    items_new?: number;
-    error_message?: string | null;
-}
-
 export const crawlApi = {
-    listJobs: async (params?: { status?: string; source_id?: string }) => {
-        const response = await apiFetch<PaginatedResponse<CrawlJob>>('/crawl/jobs', { params });
-        return response.data;
+    listJobs: async (params?: { status?: string; source_id?: string }): Promise<CrawlJob[]> => {
+        const response = await apiClient.get<{ data: CrawlJob[] }>('/crawl/jobs', { params });
+        return response.data.data;
     },
 
-    getJob: async (id: string) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>(`/crawl/jobs/${id}`);
-        return response.data;
+    getJob: async (id: string): Promise<CrawlJob> => {
+        const response = await apiClient.get<{ data: CrawlJob }>(`/crawl/jobs/${id}`);
+        return response.data.data;
     },
 
-    createJob: async (data: CreateCrawlJobInput) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>('/crawl/start', {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-        return response.data;
+    createJob: async (data: CreateCrawlJobInput): Promise<CrawlJob> => {
+        const response = await apiClient.post<{ data: CrawlJob }>('/crawl/start', data);
+        return response.data.data;
     },
 
-    updateJob: async (id: string, data: UpdateCrawlJobInput) => {
-        const response = await apiFetch<ApiResponse<CrawlJob>>(`/crawl/jobs/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-        return response.data;
+    updateJob: async (id: string, data: UpdateCrawlJobInput): Promise<CrawlJob> => {
+        const response = await apiClient.put<{ data: CrawlJob }>(`/crawl/jobs/${id}`, data);
+        return response.data.data;
     },
 
-    getDigest: async (jobId: string) => {
-        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/crawl/${jobId}/digest`);
-        return response.data;
+    getDigest: async (jobId: string): Promise<CrawlDigest> => {
+        const response = await apiClient.get<{ data: CrawlDigest }>(`/crawl/${jobId}/digest`);
+        return response.data.data;
     },
 };
 
@@ -224,20 +111,14 @@ export const crawlApi = {
 // ===========================
 
 export const digestsApi = {
-    list: async (params?: { source_id?: string; page?: number; page_size?: number }) => {
-        const response = await apiFetch<{
-            items: CrawlDigest[];
-            page: number;
-            pageSize: number;
-            totalItems: number;
-            totalPages: number;
-        }>('/digests', { params });
-        return response;
+    list: async (params?: DigestsListParams): Promise<DigestsListResponse> => {
+        const response = await apiClient.get<DigestsListResponse>('/digests', { params });
+        return response.data;
     },
 
-    getById: async (id: string) => {
-        const response = await apiFetch<ApiResponse<CrawlDigest>>(`/digests/${id}`);
-        return response.data;
+    getById: async (id: string): Promise<CrawlDigest> => {
+        const response = await apiClient.get<{ data: CrawlDigest }>(`/digests/${id}`);
+        return response.data.data;
     },
 };
 
@@ -245,59 +126,20 @@ export const digestsApi = {
 // DOCUMENTS API
 // ===========================
 
-export interface Document {
-    id: string;
-    source_id: string;
-    crawl_job_id: string;
-    url: string;
-    title: string;
-    content: string;
-    content_hash: string;
-    image_url?: string | null;
-    classification: string;
-    confidence_score?: number;
-    extracted: boolean;
-    is_alert: boolean; // TRUE for policy documents, FALSE for news
-    crawled_at: string;
-    created_at: string;
-    updated_at: string;
-    source_name?: string;
-    source_type?: string;
-}
-
-export interface DocumentsListParams {
-    limit?: number;
-    days?: number;
-    type?: string;
-    source_id?: string;
-    offset?: number;
-    is_alert?: boolean; // Filter by alert status
-}
-
-export interface DocumentsListResponse {
-    data: Document[];
-    total: number;
-    limit: number;
-    offset: number;
-    timestamp: string;
-}
-
 export const documentsApi = {
     list: async (params?: DocumentsListParams): Promise<DocumentsListResponse> => {
-        const response = await apiFetch<DocumentsListResponse>('/documents', {
-            params: params as Record<string, string | number | boolean>
-        });
-        return response;
+        const response = await apiClient.get<DocumentsListResponse>('/documents', { params });
+        return response.data;
     },
 
     getById: async (id: string): Promise<Document> => {
-        const response = await apiFetch<ApiResponse<Document>>(`/documents/${id}`);
-        return response.data;
+        const response = await apiClient.get<{ data: Document }>(`/documents/${id}`);
+        return response.data.data;
     },
 };
 
 // ===========================
-// DATAPOINTS API
+// DATAPOINTS API (LEGACY - TODO: Migrate)
 // ===========================
 
 export interface Datapoint {
@@ -310,24 +152,30 @@ export interface Datapoint {
     value: string | null;
     date_value: string | null;
     url: string | null;
-    metadata: Record<string, any> | null;
+    metadata: Record<string, unknown> | null;
     created_at: string;
 }
 
 export const datapointsApi = {
-    list: (params?: {
+    list: async (params?: {
         source_id?: string;
         category?: string;
         subcategory?: string;
         start_date?: string;
         end_date?: string;
-    }) => apiFetch<Datapoint[]>('/datapoints', { params }),
+    }): Promise<Datapoint[]> => {
+        const response = await apiClient.get<{ data: Datapoint[] }>('/datapoints', { params });
+        return response.data.data;
+    },
 
-    getById: (id: string) => apiFetch<Datapoint>(`/datapoints/${id}`),
+    getById: async (id: string): Promise<Datapoint> => {
+        const response = await apiClient.get<{ data: Datapoint }>(`/datapoints/${id}`);
+        return response.data.data;
+    },
 };
 
 // ===========================
-// HEALTH CHECK
+// HEALTH CHECK (LEGACY)
 // ===========================
 
 export interface HealthResponse {
@@ -337,5 +185,8 @@ export interface HealthResponse {
 }
 
 export const healthApi = {
-    check: () => apiFetch<HealthResponse>('/health'),
+    check: async (): Promise<HealthResponse> => {
+        const response = await apiClient.get<HealthResponse>('/health');
+        return response.data;
+    },
 };

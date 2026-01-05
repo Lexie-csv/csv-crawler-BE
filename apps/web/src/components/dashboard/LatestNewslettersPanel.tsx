@@ -1,51 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { CrawlDigest } from '@/lib/api';
+import { useDigests } from '@/lib/data/useDigests';
 
 interface LatestNewslettersPanelProps {
-    digests: CrawlDigest[];
-    loading?: boolean;
+    // No longer need props - component fetches its own data
+    loading?: boolean; // Keep for backward compatibility
 }
 
-// Hardcoded newsletters from the newsletters page (matching exact IDs)
-const AVAILABLE_NEWSLETTERS: any[] = [
-    {
-        id: 'doe-hardcoded-001',
-        source_id: 'doe-source',
-        source_name: 'Department of Energy',
-        period_start: '2025-11-25T00:00:00Z',
-        period_end: '2025-12-02T00:00:00Z',
-        created_at: '2025-12-02T02:30:00Z',
-        highlights: Array(8).fill(null),
-        datapoints: Array(6).fill(null),
-        categories: ['Policy', 'Regulatory', 'Energy']
-    },
-    {
-        id: 'cc19c065-cb14-4e35-a4e4-5fb5e6497f7a',
-        source_id: '93498e3f-38b0-498f-bcd9-a3f7027a6ed0',
-        source_name: 'DOE Laws & Issuances',
-        period_start: '2025-11-26T00:00:00Z',
-        period_end: '2025-12-03T00:00:00Z',
-        created_at: '2025-12-03T00:00:00Z',
-        highlights: Array(8).fill(null),
-        datapoints: Array(2).fill(null),
-        categories: ['Regulatory', 'Policy', 'Circular']
-    },
-    {
-        id: 'combined-news-2025-12-05',
-        source_id: 'news-combined',
-        source_name: 'CSV Radar News Intelligence',
-        period_start: '2025-11-26T00:00:00Z',
-        period_end: '2025-12-05T00:00:00Z',
-        created_at: '2025-12-05T00:00:00Z',
-        highlights: Array(17).fill(null),
-        datapoints: Array(6).fill(null),
-        categories: ['News', 'Market', 'Corporate']
-    }
-];
+export function LatestNewslettersPanel({ loading: externalLoading = false }: LatestNewslettersPanelProps) {
+    // Fetch latest 3 digests
+    const { digests, isLoading, isError } = useDigests({ page: 1, pageSize: 3 });
 
-export function LatestNewslettersPanel({ digests, loading = false }: LatestNewslettersPanelProps) {
+    const loading = isLoading || externalLoading;
     const formatDateRange = (start: string, end: string) => {
         const startDate = new Date(start);
         const endDate = new Date(end);
@@ -60,12 +27,9 @@ export function LatestNewslettersPanel({ digests, loading = false }: LatestNewsl
         return `${startFormatted} – ${endFormatted}`;
     };
 
-    const getNewsletterTitle = (digest: any) => {
+    const getNewsletterTitle = (digest: { source_name?: string }) => {
         return digest.source_name || 'Policy Newsletter';
     };
-
-    // Use hardcoded newsletters if no digests provided
-    const displayDigests = digests.length > 0 ? digests : AVAILABLE_NEWSLETTERS;
 
     if (loading) {
         return (
@@ -97,7 +61,12 @@ export function LatestNewslettersPanel({ digests, loading = false }: LatestNewsl
 
             {/* Newsletters List */}
             <div className="space-y-4">
-                {displayDigests.length === 0 ? (
+                {isError ? (
+                    <div className="text-center py-8 text-red-600">
+                        <p className="text-sm">Failed to load newsletters</p>
+                        <p className="text-xs mt-1">Please try refreshing the page</p>
+                    </div>
+                ) : digests.length === 0 && !loading ? (
                     <div className="text-center py-8 text-[#999999]">
                         <svg
                             className="mx-auto h-12 w-12 text-[#DCDCDC] mb-3"
@@ -116,7 +85,7 @@ export function LatestNewslettersPanel({ digests, loading = false }: LatestNewsl
                         <p className="text-xs mt-1">Start a crawl to generate digests</p>
                     </div>
                 ) : (
-                    displayDigests.slice(0, 3).map((digest) => (
+                    digests.slice(0, 3).map((digest) => (
                         <div
                             key={digest.id}
                             className="border border-[#E5E5E5] rounded-lg p-4 hover:bg-[#FAFAFA] transition-colors"
@@ -148,7 +117,7 @@ export function LatestNewslettersPanel({ digests, loading = false }: LatestNewsl
                                         />
                                     </svg>
                                     <span className="text-sm text-[#727272]">
-                                        {digest.highlights.length} highlights
+                                        {digest.highlights_count || 0} highlights
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -166,7 +135,7 @@ export function LatestNewslettersPanel({ digests, loading = false }: LatestNewsl
                                         />
                                     </svg>
                                     <span className="text-sm text-[#727272]">
-                                        {digest.datapoints.length} datapoints
+                                        {digest.datapoints_count || 0} datapoints
                                     </span>
                                 </div>
                             </div>

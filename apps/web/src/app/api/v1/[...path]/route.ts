@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export async function GET(
         const searchParams = request.nextUrl.searchParams.toString();
         const targetUrl = `${API_HOST}/api/v1/${path}${searchParams ? `?${searchParams}` : ''}`;
 
-        console.log(`[Proxy] GET ${targetUrl}`);
+        logger.debug({ msg: 'Proxy GET request', path, targetUrl });
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -49,7 +50,7 @@ export async function GET(
             },
         });
     } catch (error) {
-        console.error('[Proxy] GET Error:', error);
+        logger.error({ msg: 'Proxy GET error', error: error instanceof Error ? error.message : 'Unknown', path: params.path.join('/') });
         return NextResponse.json(
             {
                 error: 'Failed to fetch from API',
@@ -69,7 +70,7 @@ export async function POST(
         const targetUrl = `${API_HOST}/api/v1/${path}`;
         const body = await request.text();
 
-        console.log(`[Proxy] POST ${targetUrl}`);
+        logger.debug({ msg: 'Proxy POST request', path, targetUrl });
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -105,7 +106,7 @@ export async function POST(
             },
         });
     } catch (error) {
-        console.error('[Proxy] POST Error:', error);
+        logger.error({ msg: 'Proxy POST error', error: error instanceof Error ? error.message : 'Unknown', path: params.path.join('/') });
         return NextResponse.json(
             {
                 error: 'Failed to post to API',
@@ -154,7 +155,7 @@ export async function PUT(
             },
         });
     } catch (error) {
-        console.error('[Proxy] PUT Error:', error);
+        logger.error({ msg: 'Proxy PUT error', error: error instanceof Error ? error.message : 'Unknown', path: params.path.join('/') });
         return NextResponse.json(
             {
                 error: 'Failed to update API',
@@ -201,7 +202,7 @@ export async function DELETE(
             },
         });
     } catch (error) {
-        console.error('[Proxy] DELETE Error:', error);
+        logger.error({ msg: 'Proxy DELETE error', error: error instanceof Error ? error.message : 'Unknown', path: params.path.join('/') });
         return NextResponse.json(
             {
                 error: 'Failed to delete from API',

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Source, CrawlJob } from '@/lib/api';
+import { Source } from '@/lib/api';
 
 interface SourceWithStats extends Source {
     newDocsCount: number;
@@ -150,8 +150,8 @@ export function SourcesOverviewGrid({ sources, loading = false, onRunCrawl }: So
                                 <div className="mb-4">
                                     <div
                                         className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${health.status === 'healthy'
-                                                ? 'bg-green-50 text-green-700 border border-green-200'
-                                                : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                            ? 'bg-green-50 text-green-700 border border-green-200'
+                                            : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
                                             }`}
                                     >
                                         <span>{health.icon}</span>

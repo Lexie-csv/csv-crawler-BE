@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { CrawlDigest } from '@/lib/api';
 
@@ -236,8 +235,8 @@ export function NewsletterSummaryNewspaper({
                                     <div className="flex items-center gap-2 mb-2">
                                         {article.metadata?.source && (
                                             <span className={`px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${article.metadata.source === 'Power Philippines'
-                                                    ? 'bg-blue-100 text-blue-800'
-                                                    : 'bg-green-100 text-green-800'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-green-100 text-green-800'
                                                 }`}>
                                                 {article.metadata.source}
                                             </span>

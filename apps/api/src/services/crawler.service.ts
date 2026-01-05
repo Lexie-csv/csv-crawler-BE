@@ -50,7 +50,7 @@ export class CrawlerService {
     constructor(config: LLMConfig) {
         this.config = {
             apiKey: config.apiKey || '',
-            model: config.model || 'gpt-4-turbo',
+            model: config.model || 'gpt-4o-mini',
             baseUrl: config.baseUrl || 'https://api.openai.com/v1',
         };
 
@@ -334,7 +334,7 @@ Return only the extracted content, without HTML tags or metadata.`;
 export function createCrawler(): CrawlerService {
     return new CrawlerService({
         apiKey: process.env.LLM_API_KEY || '',
-        model: process.env.LLM_MODEL || 'gpt-4-turbo',
+        model: process.env.LLM_MODEL || 'gpt-4o-mini',
         baseUrl: process.env.LLM_BASE_URL,
     });
 }

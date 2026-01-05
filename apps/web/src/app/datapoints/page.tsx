@@ -49,7 +49,7 @@ export default function DatapointsPage(): JSX.Element {
 
     const loadDatapoints = async () => {
         try {
-            const params: any = {};
+            const params: Record<string, string> = {};
             if (filters.source_id) params.source_id = filters.source_id;
             if (filters.category) params.category = filters.category;
             if (filters.subcategory) params.subcategory = filters.subcategory;

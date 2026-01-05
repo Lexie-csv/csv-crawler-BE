@@ -12,7 +12,7 @@ export default function CrawlDashboard(): JSX.Element {
     const [jobs, setJobs] = useState<CrawlJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selectedSourceId, setSelectedSourceId] = useState<string | 'all'>('all');
+    const [selectedSourceId] = useState<string | 'all'>('all');
     const [selectedStatus, setSelectedStatus] = useState<string | 'all'>('all');
     const [startingJobs, setStartingJobs] = useState<Set<string>>(new Set());
     const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -65,7 +65,7 @@ export default function CrawlDashboard(): JSX.Element {
     const handleStartCrawl = async (sourceId: string) => {
         const source = sources.find(s => s.id === sourceId);
         if (!source) return;
-        
+
         setSelectedSource(source);
         setConfigModalOpen(true);
     };

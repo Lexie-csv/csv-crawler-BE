@@ -28,6 +28,14 @@ export default [
         },
     },
     {
-        ignores: ['node_modules', '.next', 'dist', '.turbo'],
+        ignores: [
+            '**/node_modules/**',
+            '**/.next/**',
+            '**/dist/**',
+            '**/.turbo/**',
+            '**/out/**',
+            '**/build/**',
+            '**/coverage/**',
+        ],
     },
 ];

@@ -1,250 +1,529 @@
-# CSV — Policy & Data Crawler
+# CSV Radar — Policy & Data Intelligence Platform
 
-Monitor regulatory and policy updates across PH and SEA markets. Extract key datapoints for research and financial models. Generate weekly digests and newsletters.
+**Production-ready web application for monitoring regulatory and policy updates across Philippine and Southeast Asian markets.** Extract key datapoints, generate automated newsletters, and track policy signals with AI-powered classification.
 
-## 🎯 Backend Alpha Available
-
-**NEW:** Complete backend-only policy scanner with headless browser support, LLM filtering, and multi-format exports (CSV, JSON, DB, Markdown).
-
-👉 **[Quick Start Guide](BACKEND_ALPHA_RELEASE.md)** | **[Full Documentation](apps/api/README_SCANNER.md)** | **[How to View Results](HOW_TO_VIEW_RESULTS.md)** ⭐
-
-```bash
-# 1. Setup and test (one time)
-cd apps/api && pnpm install && npx playwright install chromium
-
-# 2. Run a scan
-pnpm scanner scan --file example-urls.txt
-
-# 3. View results in plain English (no SQL/JSON needed!)
-pnpm view scan
-```
-
-**Key Features:**
-- ✅ Headless browser crawling (handles JS-rendered content)
-- ✅ Smart relevance filtering (90%+ accuracy with LLM)
-- ✅ Executive digests ("What changed, So what, What to watch")
-- ✅ Multi-format export (CSV, JSON, PostgreSQL, Markdown)
-- ✅ **Simple viewer - no SQL or JSON knowledge needed** ⭐
-- ✅ No UI needed - pure backend CLI
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![Express](https://img.shields.io/badge/Express-5.0-green)](https://expressjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-blue)](https://www.postgresql.org/)
+[![Playwright](https://img.shields.io/badge/Playwright-1.57-orange)](https://playwright.dev/)
 
 ---
 
-## Architecture
-
-- **DB**: PostgreSQL with migrations
-- **API**: Express (TypeScript, port 3001)
-- **Web**: Next.js 14 with App Router, Tailwind, Turbopack
-- **Testing**: Jest, Playwright, TDD-first
-- **Linting**: ESLint, Prettier, Husky hooks
-- **Build**: Turbo for monorepo orchestration; pnpm workspaces
-
-## Project Structure
-
-```
-.
-├── apps/
-│   ├── api/          # Express REST API
-│   └── web/          # Next.js web UI
-├── packages/
-│   ├── db/           # PostgreSQL schema & migrations
-│   └── types/        # Shared TypeScript types
-├── turbo.json        # Turbo monorepo config
-├── pnpm-workspace.yaml
-└── docker-compose.yml
-```
-
-## Getting Started
-
-### Prerequisites
-
-- **Node.js** 20+ (LTS)
-- **pnpm** 8+
-- **PostgreSQL** 14+ (or use Docker)
-- **macOS/Linux** (development tested on zsh)
-
-### Installation
+## 🚀 Quick Start
 
 ```bash
-# Install dependencies
+# 1. Clone and install
+git clone <repo-url>
+cd csv-crawler
 pnpm install
 
-# Set up environment
+# 2. Set up environment
 cp .env.example .env.local
-# Edit .env.local with your PostgreSQL connection string
-```
+# Edit .env.local with your PostgreSQL credentials
 
-### Running Locally
-
-```bash
-# Start all dev servers (API + Web with Turbopack)
-pnpm dev
-
-# OR run backend only (crawler feature)
-./scripts/run-crawler.sh
-
-# OR run individually:
-# API only (http://localhost:3001)
-pnpm dev:api
-
-# Web only (http://localhost:3000)
-pnpm dev:web
-```
-
-**See [docs/BACKEND_BUILD_GUIDE.md](docs/BACKEND_BUILD_GUIDE.md) for backend-only deployment.**
-
-### Database Setup
-
-```bash
-# Start PostgreSQL (via Docker)
+# 3. Start database and run migrations
 docker-compose up -d postgres
+pnpm db:migrate
+
+# 4. Run development servers
+pnpm dev
+# API: http://localhost:3001
+# Web: http://localhost:3000
+```
+
+**First time?** See [Quick Start Guide](QUICKSTART.md) for detailed setup instructions.
+
+---
+
+## ✨ Key Features
+
+### Web Dashboard (Production-Ready)
+- 📊 **Signals Dashboard** - Real-time KPIs, document feed, intelligent filtering
+- 📰 **Newsletter Management** - Browse, view, and generate automated policy digests
+- ♿ **Accessibility First** - WCAG 2.1 AA compliant with full keyboard navigation
+- 🎨 **Modern UI** - shadcn/ui components, Tailwind CSS, responsive design
+- 🚀 **Performance** - Progressive loading, SWR caching, React.memo optimization
+
+### Backend Crawler (Production-Ready)
+- 🤖 **Multi-Page Crawling** - Headless browser support for JS-rendered content
+- 🧠 **AI Classification** - GPT-4o powered policy/news/data classification
+- 📊 **Structured Extraction** - Datapoints with validation and metadata
+- 📧 **Automated Digests** - Weekly newsletters with highlights and analysis
+- 🔍 **Full-Text Search** - PostgreSQL GIN indexes for fast document search
+
+### Developer Experience
+- ✅ **Type-Safe** - Full TypeScript across monorepo
+- ✅ **Tested** - 30+ E2E tests with Playwright, Jest unit tests
+- ✅ **Logged** - Structured logging with Pino (JSON in prod, pretty in dev)
+- ✅ **Linted** - ESLint + Prettier, 0 errors, 0 warnings
+- ✅ **Documented** - Comprehensive guides for all workflows
+
+---
+
+## 🏗️ Architecture
+
+**Monorepo Structure:**
+```
+csv-crawler/
+├── apps/
+│   ├── api/              # Express REST API (port 3001)
+│   │   ├── src/
+│   │   │   ├── index.ts        # Server entry point
+│   │   │   ├── routes/         # API endpoints
+│   │   │   └── services/       # Business logic (crawlers, digests)
+│   │   └── package.json
+│   └── web/              # Next.js 14 app (port 3000)
+│       ├── src/
+│       │   ├── app/            # App Router pages
+│       │   ├── components/     # React components
+│       │   └── lib/            # Data hooks, API client, utilities
+│       └── package.json
+├── packages/
+│   ├── db/               # PostgreSQL schema + migrations
+│   │   ├── migrations/   # SQL migration files
+│   │   └── src/          # Migration runner
+│   └── types/            # Shared TypeScript types
+│       └── src/api.ts    # API contracts
+├── turbo.json            # Turbo monorepo config
+├── pnpm-workspace.yaml   # pnpm workspaces
+└── docker-compose.yml    # PostgreSQL container
+```
+
+**Technology Stack:**
+- **Database:** PostgreSQL 14+ with SQL migrations
+- **API:** Express 5.0 + TypeScript, REST/JSON, Pino logging
+- **Web:** Next.js 14 (App Router), React 18, Tailwind CSS, Turbopack
+- **Data Fetching:** SWR (stale-while-revalidate) with caching
+- **Testing:** Playwright (E2E), Jest + ts-jest (unit), Supertest (API)
+- **Code Quality:** ESLint, Prettier, Husky pre-commit hooks
+- **AI:** OpenAI GPT-4o for classification and extraction
+- **Crawling:** Playwright headless browser automation
+
+---
+
+## 📋 Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** 20+ (LTS recommended) - [Download](https://nodejs.org/)
+- **pnpm** 8+ - Install: `npm install -g pnpm`
+- **PostgreSQL** 14+ - Via Docker (recommended) or [native install](https://www.postgresql.org/download/)
+- **Git** - [Download](https://git-scm.com/)
+- **OpenAI API Key** - For AI classification (optional for basic usage)
+
+**Operating System:** macOS, Linux, or WSL2 (development tested on macOS with zsh)
+
+---
+
+## 🛠️ Installation & Setup
+
+### 1. Clone and Install Dependencies
+
+```bash
+# Clone repository
+git clone <repo-url>
+cd csv-crawler
+
+# Install all dependencies (monorepo)
+pnpm install
+```
+
+### 2. Environment Configuration
+
+```bash
+# Copy example environment file
+cp .env.example .env.local
+
+# Edit with your credentials
+nano .env.local
+```
+
+**Required Variables:**
+```bash
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/csv_crawler
+
+# API
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+# OpenAI (optional - needed for AI classification)
+OPENAI_API_KEY=sk-...
+
+# Environment
+NODE_ENV=development
+```
+
+### 3. Database Setup
+
+```bash
+# Start PostgreSQL container
+docker-compose up -d postgres
+
+# Wait 5 seconds for DB to be ready
+sleep 5
 
 # Run migrations
 pnpm db:migrate
 
-# (Optional) Rollback
-pnpm db:rollback
+# Verify migration
+docker exec csv-crawler-db psql -U postgres -d csv_crawler -c "\dt"
+# Should show: sources, crawl_jobs, documents, crawl_digests, etc.
 ```
 
-## Development
-
-### Building
+### 4. Start Development Servers
 
 ```bash
-# Build everything
+# Option A: Start both API and Web servers
+pnpm dev
+# API: http://localhost:3001
+# Web: http://localhost:3000
+
+# Option B: Start individually
+pnpm dev:api   # API only (port 3001)
+pnpm dev:web   # Web only (port 3000)
+```
+
+**Verify API:** `curl http://localhost:3001/health`  
+**Verify Web:** Open `http://localhost:3000` in browser
+
+---
+
+## 🎨 User Guide
+
+### Dashboard (`/signals`)
+
+**Real-time policy monitoring with intelligent filtering:**
+
+1. **KPI Cards** - View summary statistics:
+   - New Signals (last 7 days)
+   - New Alerts (policy documents)
+   - Sources Monitored
+   - Latest Newsletter
+
+2. **Document Feed** - Browse recent policy updates:
+   - Filter by time range (Today / 7 days / 30 days)
+   - Filter by type (Policy / Market / News / Data)
+   - Filter by source (DOE, ERC, NEA, etc.)
+   - Load more documents progressively (20 at a time)
+
+3. **Keyboard Navigation:**
+   - `Tab` - Navigate between filters and documents
+   - `Enter` or `Space` - Activate buttons and links
+   - `Shift+Tab` - Navigate backwards
+
+### Newsletters (`/newsletters`)
+
+**Browse and generate automated policy digests:**
+
+1. **List View** - Paginated table of all newsletters:
+   - Source name, generation date, highlights count, datapoints count
+   - Click "View" to see full digest
+
+2. **Detail View** - Full newsletter content:
+   - Executive summary with key highlights
+   - Structured datapoints with context
+   - Print/download functionality
+   - Back navigation to list
+
+3. **Generation** - Create new digest:
+   ```bash
+   cd apps/api
+   pnpm tsx generate-news-digest.ts
+   ```
+
+### Sources Management (`/sources`)
+
+**Monitor watchlist of official sites and regulators:**
+
+- View all tracked sources
+- Filter by country, type, status
+- See last crawl date and statistics
+
+---
+
+## 🔧 Development Workflows
+
+### Running Tests
+
+```bash
+# E2E tests with Playwright
+pnpm e2e              # Headless mode
+pnpm e2e:ui           # UI mode (recommended for debugging)
+pnpm e2e -- --headed  # Headed mode (see browser)
+
+# Unit tests with Jest
+pnpm test             # Run all tests
+pnpm test:watch       # Watch mode
+pnpm test -- --coverage  # With coverage report
+
+# Type checking
+pnpm type-check       # Check all TypeScript files
+```
+
+**Test Coverage:**
+- ✅ 30 E2E tests covering critical user flows
+- ✅ Signals dashboard (8 tests)
+- ✅ Newsletters list and detail (14 tests)
+- ✅ Pagination and Load More (8 tests)
+
+### Code Quality
+
+```bash
+# Linting
+pnpm lint             # Check all files
+pnpm lint:fix         # Auto-fix issues
+
+# Formatting
+pnpm format           # Format all files
+pnpm format:check     # Check formatting only
+
+# Pre-commit hooks (automatic)
+git commit -m "feat(api): add endpoint"
+# → Runs lint-staged + commitlint
+```
+
+**Current Status:**
+- ✅ 0 ESLint errors
+- ✅ 0 ESLint warnings
+- ✅ All files formatted with Prettier
+- ✅ Conventional commits enforced
+
+### Building for Production
+
+```bash
+# Build all packages
 pnpm build
 
-# Build backend only (API + db + types)
-pnpm build:api
+# Build specific packages
+pnpm build:api        # Backend only
+pnpm build:web        # Frontend only
 
-# Build frontend only (Web + types)
-pnpm build:web
+# Test production build
+pnpm start:api        # Run built API (port 3001)
+pnpm start:web        # Run built Next.js (port 3000)
 ```
 
-### Testing
+### Database Migrations
 
 ```bash
-# Unit tests (Jest)
-pnpm test
+# Create new migration
+cd packages/db/migrations
+# Create file: NNN_description.sql (e.g., 015_add_user_table.sql)
 
-# Watch mode
-pnpm test:watch
+# Run migrations
+pnpm db:migrate
 
-# E2E tests (Playwright)
-pnpm e2e
-pnpm e2e:ui  # open UI mode
+# Rollback last migration
+pnpm db:rollback
 
-# Coverage
-pnpm test -- --coverage
+# View migration status
+docker exec csv-crawler-db psql -U postgres -d csv_crawler -c "SELECT * FROM migrations ORDER BY executed_at DESC LIMIT 5;"
 ```
 
-### Linting & Formatting
+---
 
-```bash
-# Check linting
-pnpm lint
+## 📡 API Reference
 
-# Format code
-pnpm format
+### Base URL
+- **Development:** `http://localhost:3001`
+- **Production:** TBD
 
-# Check format only
-pnpm format:check
+### Authentication
+Currently no authentication (add JWT/API keys before production deployment).
 
-# Type check
-pnpm type-check
+### Endpoints
+
+#### Documents
+
+**List Documents**
+```http
+GET /api/v1/documents
 ```
 
-### Git Workflow
+**Query Parameters:**
+- `days` (number) - Filter by days ago (default: 7)
+- `limit` (number) - Results per page (default: 20, max: 100)
+- `offset` (number) - Pagination offset (default: 0)
+- `is_alert` (boolean) - Filter policy documents only
+- `source_id` (UUID) - Filter by source
+- `type` (string) - Filter by document type
 
-Husky pre-commit hooks run:
-- `pnpm lint-staged` (lint changed files)
-- commitlint validation (enforces conventional commits)
-
-Commit message format: `<type>(<scope>): <subject>`
-- Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-- Example: `feat(api): add document classification endpoint`
-
-## Design System
-
-Brand: **CSV** — clean, neutral, professional.
-
-- **Font**: Plus Jakarta Sans (400, 700)
-- **Primary color**: #202020 (brand-neutral)
-- **Text**: copy #202020, secondary #727272, captions #A0A0A0
-- **Backgrounds**: white, page #FAFAFA, contrast #EFEFEF
-- **Borders**: #DCDCDC (1px)
-- **UI Framework**: shadcn/ui components + Tailwind
-
-## Core Workflows
-
-### Crawling & Watchlists
-
-Track official sites, regulators, exchanges, FX/macro bulletins.
-
-```bash
-POST /api/v1/sources          # Add watchlist
-GET  /api/v1/documents        # List crawled documents
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "DOE Circular No. 2025-01",
+      "url": "https://www.doe.gov.ph/...",
+      "crawled_at": "2025-12-16T10:00:00Z",
+      "source_id": "uuid",
+      "source_name": "Department of Energy",
+      "content_type": "policy",
+      "is_alert": true,
+      "summary": "New solar feed-in tariff rates..."
+    }
+  ],
+  "total": 150,
+  "limit": 20,
+  "offset": 0,
+  "hasMore": true,
+  "timestamp": "2025-12-16T10:05:00Z"
+}
 ```
 
-### Policy Intelligence
-
-Classify documents (policy/regulation/news/data); extract datapoints.
-
-```bash
-GET  /api/v1/documents?classification=policy&country=PH
-GET  /api/v1/datapoints?key=solar_fit_rate
+**Get Single Document**
+```http
+GET /api/v1/documents/:id
 ```
 
-### Weekly Digest
+#### Digests (Newsletters)
 
-Auto-generate and send newsletters Monday 08:00 Asia/Manila.
-
-```bash
-GET  /api/v1/digests
-POST /api/v1/subscriptions
+**List Digests**
+```http
+GET /api/v1/digests
 ```
 
-## Environment Variables
+**Query Parameters:**
+- `page` (number) - Page number (default: 1)
+- `pageSize` (number) - Results per page (default: 10)
+- `sourceId` (UUID) - Filter by source
 
-See `.env.example` for full list. Key variables:
-
-```bash
-DATABASE_URL=postgresql://user:pass@localhost:5432/csv_crawler
-NEXT_PUBLIC_API_URL=http://localhost:3001
-NODE_ENV=development
+**Get Digest by ID**
+```http
+GET /api/v1/digests/:id
 ```
 
-## Docker (Development)
-
-```bash
-docker-compose up -d
-# Starts PostgreSQL on port 5432
-# Connect: postgresql://postgres:postgres@localhost:5432/csv_crawler
+**Response:**
+```json
+{
+  "id": "uuid",
+  "crawl_job_id": "uuid",
+  "source_id": "uuid",
+  "source_name": "Combined News Sources",
+  "generated_at": "2025-12-16T08:00:00Z",
+  "highlights_count": 15,
+  "datapoints_count": 8,
+  "highlights": [
+    {
+      "text": "New solar FiT rate: PHP 5.90/kWh",
+      "type": "policy_change",
+      "category": "renewable_energy"
+    }
+  ],
+  "datapoints": [
+    {
+      "field": "solar_fit_rate",
+      "value": "5.90",
+      "unit": "PHP/kWh",
+      "effective_date": "2025-01-01"
+    }
+  ]
+}
 ```
 
-## Deployment (Next Steps)
+#### Sources
 
-- [ ] Add GitHub Actions CI/CD
-- [ ] Set up Vercel for Next.js (web)
-- [ ] Deploy Express API to Railway/Fly.io
-- [ ] Configure Prisma or Drizzle ORM
-- [ ] Set up LangGraph AI pipeline (optional)
-- [ ] Email service integration (Sendgrid/Resend)
+**List Sources**
+```http
+GET /api/v1/sources
+```
 
-## API Reference
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Department of Energy",
+      "url": "https://www.doe.gov.ph",
+      "country": "PH",
+      "source_type": "government",
+      "is_active": true,
+      "last_crawled_at": "2025-12-16T09:00:00Z"
+    }
+  ]
+}
+```
 
-See `apps/api/README.md` (will be generated).
+#### Dashboard Stats
 
-## Contributing
+**Get Dashboard Statistics**
+```http
+GET /api/v1/dashboard/stats?days=7
+```
 
-1. Create a branch: `git checkout -b feat/your-feature`
-2. Follow conventional commits
-3. Run `pnpm test` and `pnpm lint` before pushing
-4. Open a PR
+**Response:**
+```json
+{
+  "stats": {
+    "newSignals": 45,
+    "newAlerts": 12,
+    "sourcesMonitored": 8,
+    "latestDigest": {
+      "id": "uuid",
+      "source_name": "Combined News",
+      "generated_at": "2025-12-16T08:00:00Z"
+    }
+  },
+  "timestamp": "2025-12-16T10:00:00Z"
+}
+```
 
-## License
+---
 
-Proprietary — CSV Team.
+## 🎨 Design System
 
-## Support
+### Brand Guidelines
+- **Name:** CSV Radar
+- **Tagline:** Policy & Data Intelligence Platform
+- **Style:** Clean, neutral, professional
 
-For issues or questions, reach out to the team.
+### Typography
+- **Font Family:** Plus Jakarta Sans (Google Fonts)
+- **Weights:** 400 (Regular), 700 (Bold)
+- **Usage:** All UI text and headings
+
+### Color Palette
+
+**Primary:**
+- `#202020` - Brand neutral (text, icons)
+
+**Text:**
+- Copy: `#202020`
+- Secondary: `#727272`
+- Captions: `#A0A0A0`
+
+**Backgrounds:**
+- White: `#FFFFFF`
+- Page: `#FAFAFA`
+- Contrast: `#EFEFEF`
+
+**Borders:**
+- Default: `#DCDCDC` (1px)
+
+**Semantic:**
+- Success: `#22C55E` (green-500)
+- Error: `#EF4444` (red-500)
+- Warning: `#F59E0B` (amber-500)
+- Info: `#3B82F6` (blue-500)
+
+### Components
+
+**UI Library:** shadcn/ui + Tailwind CSS
+
+**Reusable Components:**
+- `StatCard` - KPI display cards
+- `DocumentCard` - Document/signal cards
+- `EmptyState` - No data states
+- `LoadingState` - Loading indicators
+- `ErrorBoundary` - Error handling
+
+**Spacing:** 8px baseline (Tailwind defaults: `space-1` = 4px, `space-2` = 8px, etc.)
+
+**Border Radius:**
+- `rounded-md` - 0.375rem (default)
+- `rounded-lg` - 0.5rem (cards, modals)
+
+---

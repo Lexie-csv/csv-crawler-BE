@@ -9,11 +9,11 @@ const bworldId = 'ad6b097f-befe-4ef9-8e9f-715d3a3c2945';
 
 async function main() {
     try {
-        console.log('🚀 Starting BusinessWorld Online crawl...\n');
+        console.log('🚀 Starting BusinessWorld Online crawl (VISIBLE BROWSER)...\n');
 
         const job = await createCrawlJob(bworldId, {
-            maxPages: 200, // Allow crawling up to 200 pages to find articles
-            maxDepth: 4,   // Go deeper to find actual articles
+            maxPages: 10,   // More pages to see browser longer
+            maxDepth: 3,    // More depth
             useMultiPage: true
         });
 

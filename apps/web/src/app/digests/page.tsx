@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { digestsApi, sourcesApi, CrawlDigest, Source } from '@/lib/api';
 import { Table } from '@/components/Table';
+import { logger } from '@/lib/logger';
 
 export default function DigestsPage(): JSX.Element {
     const [digests, setDigests] = useState<CrawlDigest[]>([]);
@@ -28,7 +29,7 @@ export default function DigestsPage(): JSX.Element {
             const data = await sourcesApi.list();
             setSources(data);
         } catch (err) {
-            console.error('Failed to load sources:', err);
+            logger.error({ msg: 'Failed to load sources', error: err instanceof Error ? err.message : 'Unknown' });
         }
     };
 
@@ -36,12 +37,12 @@ export default function DigestsPage(): JSX.Element {
         try {
             setLoading(true);
             setError(null);
-            
+
             const params: { page: number; page_size: number; source_id?: string } = {
                 page,
                 page_size: pageSize,
             };
-            
+
             if (selectedSourceId !== 'all') {
                 params.source_id = selectedSourceId;
             }
